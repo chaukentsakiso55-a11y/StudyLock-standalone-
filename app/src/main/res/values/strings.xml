@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StudyLock</string>
+    <string name="accessibility_service_description">Blocks apps from the StudyLock block list while a Focus session is active, then returns you to StudyLock.</string>
+</resources>
