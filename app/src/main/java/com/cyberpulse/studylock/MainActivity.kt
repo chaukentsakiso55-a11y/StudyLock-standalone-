@@ -238,7 +238,7 @@ private fun WorkspaceScreen(spec: AppSpec, primary: Color, padding: PaddingValue
         if (timerRunning && secondsLeft > 0) {
             delay(1000)
             secondsLeft -= 1
-        } else if (secondsLeft == 0) {
+        } else if (timerRunning && secondsLeft == 0) {
             timerRunning = false
             val entry = "Completed ${selectedFeature.title} · $chosenMinutes min"
             activity.add(0, entry)
