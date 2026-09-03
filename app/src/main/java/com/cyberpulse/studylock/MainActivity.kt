@@ -183,14 +183,18 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
     override fun onResume() {
         super.onResume()
+        DeviceProtectionController.applyDesiredPolicy(applicationContext)
         if (bridgeAttached) nativeBridge.emitNativeStatus()
     }
 
     private fun attachNativeBridge() {
-        val script = assets.open("native-bridge.js")
+        val bridgeScript = assets.open("native-bridge.js")
             .bufferedReader()
             .use { it.readText() }
-        webView.evaluateJavascript(script) {
+        val enhancementsScript = assets.open("studylock-enhancements.js")
+            .bufferedReader()
+            .use { it.readText() }
+        webView.evaluateJavascript("$bridgeScript\n$enhancementsScript") {
             bridgeAttached = true
             nativeBridge.emitNativeStatus()
         }
