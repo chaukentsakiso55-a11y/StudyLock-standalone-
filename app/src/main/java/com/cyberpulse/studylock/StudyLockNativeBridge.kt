@@ -54,6 +54,25 @@ class StudyLockNativeBridge(
         ParentPasswordStore.verify(appContext, password)
 
     @JavascriptInterface
+    fun requestDeviceAdminAccess() {
+        activity.runOnUiThread {
+            DeviceProtectionController.requestAdminActivation(activity)
+        }
+    }
+
+    @JavascriptInterface
+    fun enableUninstallProtection(): String =
+        DeviceProtectionController.enable(appContext).toJson(appContext)
+
+    @JavascriptInterface
+    fun disableUninstallProtection(password: String): String =
+        DeviceProtectionController.disable(appContext, password).toJson(appContext)
+
+    @JavascriptInterface
+    fun getProtectionState(): String =
+        DeviceProtectionController.status(appContext).toString()
+
+    @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
         aiTutorGateway.request(payload) { result -> emitTutorResult(requestId, result) }
     }
@@ -84,6 +103,10 @@ class StudyLockNativeBridge(
             blockedPackages = BlockedAppResolver.resolve(appContext, entries),
             blockedEntries = entries.toSet()
         )
+
+        if (active) {
+            DeviceProtectionController.applyDesiredPolicy(appContext)
+        }
 
         if (
             active &&
@@ -143,16 +166,25 @@ class StudyLockNativeBridge(
     }
 
     @JavascriptInterface
-    fun getNativeState(): String = JSONObject().apply {
-        put("firebaseConfigured", firebaseGateway.isConfigured)
-        put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
-        put("accessibilityEnabled", isAccessibilityServiceEnabled())
-        put("focusActive", FocusStateStore.isActive(appContext))
-        put("focusPaused", FocusStateStore.isPaused(appContext))
-        put("focusRemainingSeconds", FocusStateStore.remainingSeconds(appContext))
-        put("musicPlaying", MusicStateStore.isPlaying(appContext))
-        put("androidVersion", Build.VERSION.SDK_INT)
-    }.toString()
+    fun getNativeState(): String {
+        val protection = DeviceProtectionController.status(appContext)
+        return JSONObject().apply {
+            put("firebaseConfigured", firebaseGateway.isConfigured)
+            put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
+            put("accessibilityEnabled", isAccessibilityServiceEnabled())
+            put("focusActive", FocusStateStore.isActive(appContext))
+            put("focusPaused", FocusStateStore.isPaused(appContext))
+            put("focusRemainingSeconds", FocusStateStore.remainingSeconds(appContext))
+            put("musicPlaying", MusicStateStore.isPlaying(appContext))
+            put("deviceAdminActive", protection.optBoolean("adminActive"))
+            put("deviceOwner", protection.optBoolean("deviceOwner"))
+            put("profileOwner", protection.optBoolean("profileOwner"))
+            put("uninstallBlocked", protection.optBoolean("uninstallBlocked"))
+            put("uninstallProtectionDesired", protection.optBoolean("protectionDesired"))
+            put("uninstallProtectionLevel", protection.optString("level", "off"))
+            put("androidVersion", Build.VERSION.SDK_INT)
+        }.toString()
+    }
 
     fun emitNativeStatus() {
         activity.runJavascript(
