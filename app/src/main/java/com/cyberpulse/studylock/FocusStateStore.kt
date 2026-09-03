@@ -47,6 +47,12 @@ object FocusStateStore {
         return false
     }
 
+    fun isPaused(context: Context): Boolean {
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        return preferences.getBoolean(ACTIVE, false) &&
+            preferences.getBoolean(PAUSED, false)
+    }
+
     fun remainingSeconds(context: Context): Int {
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         if (!preferences.getBoolean(ACTIVE, false)) return 0
