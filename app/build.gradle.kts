@@ -11,10 +11,11 @@ val localProperties = Properties().apply {
 }
 
 fun configValue(name: String, fallback: String = ""): String =
-    providers.environmentVariable(name).orNull
-        ?: providers.gradleProperty(name).orNull
-        ?: localProperties.getProperty(name)
-        ?: fallback
+    listOf(
+        providers.environmentVariable(name).orNull,
+        providers.gradleProperty(name).orNull,
+        localProperties.getProperty(name)
+    ).firstOrNull { !it.isNullOrBlank() } ?: fallback
 
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
