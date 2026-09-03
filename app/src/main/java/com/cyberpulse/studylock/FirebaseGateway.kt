@@ -27,7 +27,7 @@ class FirebaseGateway(context: Context) {
             BuildConfig.FIREBASE_APP_ID.isNotBlank() &&
             BuildConfig.FIREBASE_PROJECT_ID.isNotBlank()
 
-    private val firebaseApp: FirebaseApp? = if (isConfigured) {
+    val firebaseApp: FirebaseApp? = if (isConfigured) {
         val options = FirebaseOptions.Builder()
             .setApiKey(BuildConfig.FIREBASE_API_KEY)
             .setApplicationId(BuildConfig.FIREBASE_APP_ID)
@@ -155,7 +155,7 @@ class FirebaseGateway(context: Context) {
 
     private fun missingConfiguration() = AuthResult(
         false,
-        "Firebase needs a rotated StudyLock API key in local.properties."
+        "Firebase is not configured for this StudyLock build."
     )
 
     private fun friendlyMessage(error: Throwable): String {
