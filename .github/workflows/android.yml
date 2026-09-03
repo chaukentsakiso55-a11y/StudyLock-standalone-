@@ -26,6 +26,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Verify exact HTML
         run: ./scripts/verify-html.sh
+      - name: Verify WebView JavaScript
+        run: |
+          node --check app/src/main/assets/native-bridge.js
+          node --check app/src/main/assets/studylock-enhancements.js
       - name: Build and test
         run: |
           chmod +x gradlew
