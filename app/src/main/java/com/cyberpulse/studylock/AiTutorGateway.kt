@@ -36,16 +36,15 @@ class AiTutorGateway {
 
     private fun execute(payload: String): Result {
         val request = JSONObject(payload)
-        val apiKey = request.optString("apiKey").trim()
-        if (apiKey.isBlank()) {
-            return Result(
-                success = false,
-                message = "Add a Gemini or OpenRouter API key in Settings."
-            )
-        }
         val body = request.optJSONObject("body")
             ?: return Result(false, message = "The tutor request was incomplete.")
-        return if (apiKey.startsWith("AIza")) {
+        val apiKey = request.optString("apiKey").trim()
+
+        if (apiKey.isBlank()) {
+            return requestPollinations(body)
+        }
+
+        val primary = if (apiKey.startsWith("AIza")) {
             requestGemini(apiKey, body)
         } else {
             requestOpenRouter(
@@ -54,6 +53,11 @@ class AiTutorGateway {
                 body = body
             )
         }
+        if (primary.success) return primary
+
+        val fallback = runCatching { requestPollinations(body) }
+            .getOrElse { Result(false, message = it.message.orEmpty()) }
+        return if (fallback.success) fallback else primary
     }
 
     private fun requestOpenRouter(
@@ -61,20 +65,7 @@ class AiTutorGateway {
         selectedModel: String,
         body: JSONObject
     ): Result {
-        val messages = JSONArray()
-        body.optString("system").takeIf(String::isNotBlank)?.let { system ->
-            messages.put(JSONObject().put("role", "system").put("content", system))
-        }
-        val sourceMessages = body.optJSONArray("messages") ?: JSONArray()
-        for (index in 0 until sourceMessages.length()) {
-            val message = sourceMessages.optJSONObject(index) ?: continue
-            messages.put(
-                JSONObject()
-                    .put("role", message.optString("role", "user"))
-                    .put("content", message.opt("content") ?: "")
-            )
-        }
-
+        val messages = openAiMessages(body)
         val model = selectedModel.takeIf {
             it == "openrouter/free" || it == "openrouter/auto"
         } ?: "openrouter/free"
@@ -97,35 +88,32 @@ class AiTutorGateway {
         if (response.code !in 200..299) {
             return providerFailure("OpenRouter", response.code, response.body)
         }
-        val json = JSONObject(response.body)
-        val text = json.optJSONArray("choices")
-            ?.optJSONObject(0)
-            ?.optJSONObject("message")
-            ?.optString("content")
-            .orEmpty()
-            .trim()
-        return if (text.isNotBlank()) Result(true, text)
-        else Result(false, message = "OpenRouter returned an empty answer.")
+        return parseOpenAiResponse("OpenRouter", response.body)
+    }
+
+    private fun requestPollinations(body: JSONObject): Result {
+        val requestBody = JSONObject()
+            .put("model", "openai")
+            .put("messages", openAiMessages(body))
+            .put("max_tokens", body.optInt("max_tokens", 500).coerceIn(32, 2_000))
+            .put("temperature", 0.4)
+            .put("stream", false)
+            .put("private", true)
+
+        val response = postJson(
+            url = "https://text.pollinations.ai/openai",
+            body = requestBody
+        )
+        if (response.code !in 200..299) {
+            return providerFailure("Free tutor fallback", response.code, response.body)
+        }
+        return parseOpenAiResponse("Free tutor fallback", response.body)
     }
 
     private fun requestGemini(apiKey: String, body: JSONObject): Result {
-        val contents = JSONArray()
-        val sourceMessages = body.optJSONArray("messages") ?: JSONArray()
-        for (index in 0 until sourceMessages.length()) {
-            val message = sourceMessages.optJSONObject(index) ?: continue
-            val content = message.opt("content")?.toString().orEmpty()
-            if (content.isBlank()) continue
-            contents.put(
-                JSONObject()
-                    .put(
-                        "role",
-                        if (message.optString("role") == "assistant") "model" else "user"
-                    )
-                    .put(
-                        "parts",
-                        JSONArray().put(JSONObject().put("text", content))
-                    )
-            )
+        val contents = geminiContents(body)
+        if (contents.length() == 0) {
+            return Result(false, message = "The tutor request did not contain a question.")
         }
 
         val requestBody = JSONObject()
@@ -172,6 +160,71 @@ class AiTutorGateway {
         else Result(false, message = "Gemini returned an empty answer.")
     }
 
+    private fun openAiMessages(body: JSONObject): JSONArray = JSONArray().apply {
+        body.optString("system").takeIf(String::isNotBlank)?.let { system ->
+            put(JSONObject().put("role", "system").put("content", system))
+        }
+        val sourceMessages = body.optJSONArray("messages") ?: JSONArray()
+        for (index in 0 until sourceMessages.length()) {
+            val message = sourceMessages.optJSONObject(index) ?: continue
+            val content = message.opt("content")?.toString().orEmpty().trim()
+            if (content.isBlank()) continue
+            val role = when (message.optString("role")) {
+                "assistant", "model" -> "assistant"
+                else -> "user"
+            }
+            put(JSONObject().put("role", role).put("content", content))
+        }
+    }
+
+    private fun geminiContents(body: JSONObject): JSONArray {
+        data class Turn(val role: String, var text: String)
+
+        val turns = mutableListOf<Turn>()
+        val sourceMessages = body.optJSONArray("messages") ?: JSONArray()
+        for (index in 0 until sourceMessages.length()) {
+            val message = sourceMessages.optJSONObject(index) ?: continue
+            val content = message.opt("content")?.toString().orEmpty().trim()
+            if (content.isBlank()) continue
+            val role = if (message.optString("role") == "assistant") "model" else "user"
+
+            if (turns.isEmpty() && role == "model") continue
+            val previous = turns.lastOrNull()
+            if (previous != null && previous.role == role) {
+                previous.text = previous.text + "\n\n" + content
+            } else {
+                turns += Turn(role, content)
+            }
+        }
+
+        return JSONArray().apply {
+            turns.forEach { turn ->
+                put(
+                    JSONObject()
+                        .put("role", turn.role)
+                        .put(
+                            "parts",
+                            JSONArray().put(JSONObject().put("text", turn.text))
+                        )
+                )
+            }
+        }
+    }
+
+    private fun parseOpenAiResponse(provider: String, body: String): Result {
+        val text = runCatching {
+            JSONObject(body)
+                .optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optJSONObject("message")
+                ?.optString("content")
+                .orEmpty()
+                .trim()
+        }.getOrDefault("")
+        return if (text.isNotBlank()) Result(true, text)
+        else Result(false, message = "$provider returned an empty answer.")
+    }
+
     private fun providerFailure(provider: String, code: Int, body: String): Result {
         val detail = runCatching {
             val json = JSONObject(body)
@@ -183,9 +236,9 @@ class AiTutorGateway {
             }
         }.getOrDefault("")
         val friendly = when (code) {
-            400 -> "The selected model or request was rejected."
+            400 -> detail.take(180).ifBlank { "The selected model or request was rejected." }
             401, 403 -> "The API key was rejected or lacks permission."
-            429 -> "The provider's usage limit was reached. Try again later."
+            429 -> "The provider's usage limit was reached."
             else -> detail.take(180).ifBlank { "Request failed with status $code." }
         }
         return Result(false, message = "$provider: $friendly")
@@ -203,7 +256,7 @@ class AiTutorGateway {
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "StudyLock-Android/1.0.1")
+            setRequestProperty("User-Agent", "StudyLock-Android/1.0.2")
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         return try {
