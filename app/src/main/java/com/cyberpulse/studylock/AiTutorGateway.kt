@@ -2,16 +2,15 @@ package com.cyberpulse.studylock
 
 import com.google.firebase.FirebaseApp
 import com.google.firebase.ai.FirebaseAI
-import com.google.firebase.ai.java.GenerativeModelFutures
 import com.google.firebase.ai.type.GenerativeBackend
 import com.google.firebase.ai.type.content
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class AiTutorGateway(
     private val firebaseApp: FirebaseApp?
@@ -86,10 +85,9 @@ class AiTutorGateway(
                 content { text(instruction) }
             }
         )
-        val futures = GenerativeModelFutures.from(model)
-        val response = futures
-            .generateContent(content { text(prompt) })
-            .get(40, TimeUnit.SECONDS)
+        val response = runBlocking {
+            model.generateContent(content { text(prompt) })
+        }
         val text = response.text.orEmpty().trim()
 
         return if (text.isNotBlank()) {
