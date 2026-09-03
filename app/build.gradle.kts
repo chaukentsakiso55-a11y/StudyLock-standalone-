@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.2-focus-firebase-ai-fix"
+        versionCode = 5
+        versionName = "1.0.3-uninstall-focus-music"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
