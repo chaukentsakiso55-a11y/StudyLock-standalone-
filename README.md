@@ -1,40 +1,61 @@
-# StudyLock
+# StudyLock Exact Hybrid
 
-Focus with purpose. Finish what matters.
+This repository rebuilds StudyLock around the supplied standalone HTML without changing its interface bytes. The same HTML is stored at the repository root and inside the Android app assets. Native Kotlin code adds the Android-only capabilities that HTML cannot provide.
 
-This repository contains the first native Android foundation for **StudyLock**, a Cyber Pulse product.
+## Included
 
-## Included now
+- Byte-identical StudyLock HTML and SHA-256 verification
+- Exact Focus, Planner, Tutor, Quiz, Notes, Progress, Learn and Rewards screens
+- Existing four-track music player and custom audio upload
+- Background music continuity through an Android foreground service
+- Native Android voice input for Tutor and Quiz
+- Native blocked-app redirection during active focus sessions
+- Back-button exit protection during active focus sessions
+- Firebase Authentication and Cloud Firestore sync bridge
+- Firebase App Check providers for debug and Play Integrity builds
+- GitHub Actions test, lint, APK build and checksum artifact
 
-- Kotlin and Jetpack Compose Android project
-- Dark neon liquid-glass interface
-- Home, workspace, progress and settings navigation
-- Local activity log and configurable focus timer
-- Offline-first preferences and progress
-- Unit test and GitHub Actions APK build
-- No embedded API keys or fake cloud connection
+## Firebase connection
 
-## Firebase phase
+The Android application ID is `com.studylock.student` and the code targets the `studylock-family` Firebase project. The previously published API key is intentionally not committed again.
 
-Firebase is deliberately deferred. Authentication, Firestore/Realtime Database, remote sync, Cloud Functions and App Check should be added together after the Firebase projects and security rules are agreed.
+Add the rotated value to your private `local.properties` file:
 
-## Open in Android Studio
+```properties
+STUDYLOCK_FIREBASE_API_KEY=your_rotated_firebase_web_api_key
+```
 
-1. Clone or download this repository.
-2. Open the repository root in Android Studio.
-3. Use JDK 17 and allow Gradle sync to finish.
-4. Run the `app` configuration on Android 8.0 or newer.
+For GitHub Actions, add the same value as the repository secret `STUDYLOCK_FIREBASE_API_KEY`. You can optionally override `STUDYLOCK_FIREBASE_APP_ID`; the registered student app ID is already the non-secret default.
 
-The debug APK is also built by the **Android build** GitHub Actions workflow.
+Enable Email/Password and Anonymous authentication in Firebase Authentication. Deploy `firestore.rules` before using Cloud Firestore. Register the final signing-certificate SHA-256 in Firebase App Check before enforcing Play Integrity.
 
-## Build configuration
+## Enable real app blocking
 
-- Minimum Android: API 26
-- Target/compile SDK: API 35
-- Android Gradle Plugin: 8.9.2
-- Gradle wrapper: 8.11.1
-- Kotlin: 2.1.20
+1. Install and open the Android app.
+2. Start a focus session.
+3. Android opens Accessibility settings the first time.
+4. Enable **StudyLock app blocking**.
 
-## Ownership
+The blocker reads only the active app package name. It does not retrieve screen text or perform gestures. The exact HTML defaults map Instagram, TikTok, YouTube, and X/Twitter to their Android packages. An Android package name can also be entered directly into the HTML block list.
 
-Cyber Pulse · Foundation version 0.1.0
+## Verify the exact HTML
+
+```bash
+./scripts/verify-html.sh
+```
+
+Expected SHA-256:
+
+```text
+3920e817ef6e294ca603e0b72d29834833c9ddd22d5fea4286594345c05a4803
+```
+
+## Build
+
+Open the repository in Android Studio with JDK 17, or run:
+
+```bash
+./gradlew testDebugUnitTest lintDebug assembleDebug
+```
+
+GitHub Actions uploads `app-debug.apk`, the exact HTML, and `SHA256SUMS-ci.txt` together.

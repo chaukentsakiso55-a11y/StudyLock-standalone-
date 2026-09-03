@@ -1,0 +1,2 @@
+3920e817ef6e294ca603e0b72d29834833c9ddd22d5fea4286594345c05a4803  studylock-exact.html
+3920e817ef6e294ca603e0b72d29834833c9ddd22d5fea4286594345c05a4803  app/src/main/assets/studylock-exact.html

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StudyLock</string>
+    <string name="accessibility_service_description">Blocks selected distraction apps only while a StudyLock focus session is active.</string>
+    <string name="music_channel_name">StudyLock background music</string>
+</resources>

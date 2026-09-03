@@ -1,26 +1,72 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun configValue(name: String, fallback: String = ""): String =
+    providers.environmentVariable(name).orNull
+        ?: providers.gradleProperty(name).orNull
+        ?: localProperties.getProperty(name)
+        ?: fallback
+
+fun String.asBuildConfigString(): String =
+    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 android {
     namespace = "com.cyberpulse.studylock"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.cyberpulse.studylock"
+        applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0-exact"
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField(
+            "String",
+            "FIREBASE_API_KEY",
+            configValue("STUDYLOCK_FIREBASE_API_KEY").asBuildConfigString()
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_APP_ID",
+            configValue(
+                "STUDYLOCK_FIREBASE_APP_ID",
+                "1:126746983812:android:05e571925837aafa98b1d1"
+            ).asBuildConfigString()
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_PROJECT_ID",
+            configValue("STUDYLOCK_FIREBASE_PROJECT_ID", "studylock-family").asBuildConfigString()
+        )
+        buildConfigField(
+            "String",
+            "FIREBASE_STORAGE_BUCKET",
+            configValue(
+                "STUDYLOCK_FIREBASE_STORAGE_BUCKET",
+                "studylock-family.firebasestorage.app"
+            ).asBuildConfigString()
+        )
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 
@@ -34,7 +80,7 @@ android {
     }
 
     buildFeatures {
-        compose = true
+        buildConfig = true
     }
 
     packaging {
@@ -44,15 +90,14 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation(platform("androidx.compose:compose-bom:2025.05.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.webkit:webkit:1.14.0")
+
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity")
+    implementation("com.google.firebase:firebase-appcheck-debug")
+
     testImplementation("junit:junit:4.13.2")
 }
