@@ -28,15 +28,18 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.1-device-fix"
+        versionCode = 4
+        versionName = "1.0.2-focus-firebase-ai-fix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField(
             "String",
             "FIREBASE_API_KEY",
-            configValue("STUDYLOCK_FIREBASE_API_KEY").asBuildConfigString()
+            configValue(
+                "STUDYLOCK_FIREBASE_API_KEY",
+                "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
+            ).asBuildConfigString()
         )
         buildConfigField(
             "String",

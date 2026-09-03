@@ -148,6 +148,7 @@ class StudyLockNativeBridge(
         put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
         put("accessibilityEnabled", isAccessibilityServiceEnabled())
         put("focusActive", FocusStateStore.isActive(appContext))
+        put("focusPaused", FocusStateStore.isPaused(appContext))
         put("focusRemainingSeconds", FocusStateStore.remainingSeconds(appContext))
         put("musicPlaying", MusicStateStore.isPlaying(appContext))
         put("androidVersion", Build.VERSION.SDK_INT)

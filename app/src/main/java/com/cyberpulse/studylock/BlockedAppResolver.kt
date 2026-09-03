@@ -1,6 +1,7 @@
 package com.cyberpulse.studylock
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -56,6 +57,16 @@ object BlockedAppResolver {
 
     fun matches(context: Context, packageName: String, entries: Set<String>): Boolean {
         if (packageName in resolve(entries.toList())) return true
+
+        val packageKey = canonical(packageName)
+        val entryKeys = entries.mapNotNull { entry ->
+            canonicalEntry(entry).takeIf { it.length >= 3 }
+        }
+        if (entryKeys.any { entryKey ->
+                packageKey.contains(entryKey) || entryKey.contains(packageKey)
+            }
+        ) return true
+
         val label = runCatching {
             val application = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.getApplicationInfo(
@@ -69,37 +80,43 @@ object BlockedAppResolver {
             context.packageManager.getApplicationLabel(application).toString()
         }.getOrNull() ?: return false
 
-        val packageKey = canonical(packageName)
         val labelKey = canonical(label)
-        return entries.any { entry ->
-            val entryKey = canonical(
-                entry
-                    .replace(Regex("^https?://"), "")
-                    .replace(Regex("^www\\."), "")
-                    .substringBefore('/')
-                    .substringBefore(".com")
-                    .substringBefore(".net")
-                    .substringBefore(".org")
-            )
-            entryKey.length >= 3 && (
-                entryKey == labelKey ||
-                    entryKey == packageKey ||
-                    labelKey.contains(entryKey) ||
-                    entryKey.contains(labelKey)
-                )
+        return entryKeys.any { entryKey ->
+            entryKey == labelKey ||
+                labelKey.contains(entryKey) ||
+                entryKey.contains(labelKey)
         }
     }
 
     private fun installedApplications(context: Context): List<ApplicationInfo> = runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getInstalledApplications(
-                PackageManager.ApplicationInfoFlags.of(0)
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val activities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.queryIntentActivities(
+                launcherIntent,
+                PackageManager.ResolveInfoFlags.of(0)
             )
         } else {
             @Suppress("DEPRECATION")
-            context.packageManager.getInstalledApplications(0)
+            context.packageManager.queryIntentActivities(launcherIntent, 0)
         }
+        activities
+            .mapNotNull { it.activityInfo?.applicationInfo }
+            .distinctBy { it.packageName }
     }.getOrDefault(emptyList())
+
+    private fun canonicalEntry(entry: String): String = canonical(
+        entry
+            .trim()
+            .lowercase()
+            .replace(Regex("^https?://"), "")
+            .replace(Regex("^www\\."), "")
+            .substringBefore('/')
+            .substringBefore(".com")
+            .substringBefore(".net")
+            .substringBefore(".org")
+    )
 
     private fun canonical(value: String): String =
         value.lowercase().replace(Regex("[^a-z0-9]"), "")
