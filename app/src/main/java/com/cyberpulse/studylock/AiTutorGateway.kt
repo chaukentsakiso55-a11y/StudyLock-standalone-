@@ -1,5 +1,10 @@
 package com.cyberpulse.studylock
 
+import com.google.firebase.FirebaseApp
+import com.google.firebase.ai.FirebaseAI
+import com.google.firebase.ai.type.GenerativeBackend
+import com.google.firebase.ai.type.content
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -7,7 +12,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
-class AiTutorGateway {
+class AiTutorGateway(
+    private val firebaseApp: FirebaseApp?
+) {
     data class Result(
         val success: Boolean,
         val text: String = "",
@@ -22,8 +29,7 @@ class AiTutorGateway {
                 .getOrElse { error ->
                     Result(
                         success = false,
-                        message = error.message
-                            ?: "The AI provider could not be reached."
+                        message = friendlyFirebaseAiError(error)
                     )
                 }
             callback(result)
@@ -41,7 +47,7 @@ class AiTutorGateway {
         val apiKey = request.optString("apiKey").trim()
 
         if (apiKey.isBlank()) {
-            return requestPollinations(body)
+            return requestFirebaseAi(body)
         }
 
         val primary = if (apiKey.startsWith("AIza")) {
@@ -55,9 +61,40 @@ class AiTutorGateway {
         }
         if (primary.success) return primary
 
-        val fallback = runCatching { requestPollinations(body) }
-            .getOrElse { Result(false, message = it.message.orEmpty()) }
-        return if (fallback.success) fallback else primary
+        val firebaseFallback = runCatching { requestFirebaseAi(body) }
+            .getOrElse { Result(false, message = friendlyFirebaseAiError(it)) }
+        return if (firebaseFallback.success) firebaseFallback else primary
+    }
+
+    private fun requestFirebaseAi(body: JSONObject): Result {
+        val app = firebaseApp
+            ?: return Result(
+                false,
+                message = "StudyLock Firebase AI is not configured on this build."
+            )
+        val prompt = firebasePrompt(body)
+        if (prompt.isBlank()) {
+            return Result(false, message = "The tutor request did not contain a question.")
+        }
+
+        val ai = FirebaseAI.getInstance(app, GenerativeBackend.googleAI())
+        val systemText = body.optString("system").trim()
+        val model = ai.generativeModel(
+            modelName = FIREBASE_MODEL,
+            systemInstruction = systemText.takeIf(String::isNotBlank)?.let { instruction ->
+                content { text(instruction) }
+            }
+        )
+        val response = runBlocking {
+            model.generateContent(content { text(prompt) })
+        }
+        val text = response.text.orEmpty().trim()
+
+        return if (text.isNotBlank()) {
+            Result(true, text)
+        } else {
+            Result(false, message = "Firebase AI returned an empty answer.")
+        }
     }
 
     private fun requestOpenRouter(
@@ -89,25 +126,6 @@ class AiTutorGateway {
             return providerFailure("OpenRouter", response.code, response.body)
         }
         return parseOpenAiResponse("OpenRouter", response.body)
-    }
-
-    private fun requestPollinations(body: JSONObject): Result {
-        val requestBody = JSONObject()
-            .put("model", "openai")
-            .put("messages", openAiMessages(body))
-            .put("max_tokens", body.optInt("max_tokens", 500).coerceIn(32, 2_000))
-            .put("temperature", 0.4)
-            .put("stream", false)
-            .put("private", true)
-
-        val response = postJson(
-            url = "https://text.pollinations.ai/openai",
-            body = requestBody
-        )
-        if (response.code !in 200..299) {
-            return providerFailure("Free tutor fallback", response.code, response.body)
-        }
-        return parseOpenAiResponse("Free tutor fallback", response.body)
     }
 
     private fun requestGemini(apiKey: String, body: JSONObject): Result {
@@ -158,6 +176,26 @@ class AiTutorGateway {
         }.trim()
         return if (text.isNotBlank()) Result(true, text)
         else Result(false, message = "Gemini returned an empty answer.")
+    }
+
+    private fun firebasePrompt(body: JSONObject): String {
+        val messages = body.optJSONArray("messages") ?: JSONArray()
+        if (messages.length() == 0) return body.optString("prompt").trim()
+
+        val start = (messages.length() - 16).coerceAtLeast(0)
+        return buildString {
+            for (index in start until messages.length()) {
+                val message = messages.optJSONObject(index) ?: continue
+                val text = message.opt("content")?.toString().orEmpty().trim()
+                if (text.isBlank()) continue
+                val role = when (message.optString("role")) {
+                    "assistant", "model" -> "Tutor"
+                    else -> "Student"
+                }
+                append(role).append(": ").append(text).append('\n')
+            }
+            append("Tutor:")
+        }.trim()
     }
 
     private fun openAiMessages(body: JSONObject): JSONArray = JSONArray().apply {
@@ -244,6 +282,25 @@ class AiTutorGateway {
         return Result(false, message = "$provider: $friendly")
     }
 
+    private fun friendlyFirebaseAiError(error: Throwable): String {
+        val cause = generateSequence(error) { it.cause }
+            .mapNotNull { it.message?.trim() }
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+        return when {
+            cause.contains("app check", ignoreCase = true) ->
+                "StudyLock AI could not verify this app with Firebase App Check."
+            cause.contains("not found", ignoreCase = true) ||
+                cause.contains("not enabled", ignoreCase = true) ->
+                "Firebase AI Logic is not enabled for the StudyLock project."
+            cause.contains("quota", ignoreCase = true) ||
+                cause.contains("resource exhausted", ignoreCase = true) ->
+                "StudyLock AI has reached its current Firebase quota. Try again later."
+            cause.isNotBlank() -> "StudyLock AI: ${cause.take(180)}"
+            else -> "StudyLock AI could not answer right now. Check your connection and try again."
+        }
+    }
+
     private fun postJson(
         url: String,
         body: JSONObject,
@@ -256,7 +313,7 @@ class AiTutorGateway {
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "StudyLock-Android/1.0.2")
+            setRequestProperty("User-Agent", "StudyLock-Android/1.0.4")
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         return try {
@@ -275,4 +332,8 @@ class AiTutorGateway {
     }
 
     private data class HttpResponse(val code: Int, val body: String)
+
+    private companion object {
+        const val FIREBASE_MODEL = "gemini-3.7-flash"
+    }
 }

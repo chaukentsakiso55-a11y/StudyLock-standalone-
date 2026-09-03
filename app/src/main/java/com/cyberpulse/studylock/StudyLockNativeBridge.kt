@@ -15,7 +15,7 @@ class StudyLockNativeBridge(
     private val firebaseGateway: FirebaseGateway
 ) {
     private val appContext: Context = activity.applicationContext
-    private val aiTutorGateway = AiTutorGateway()
+    private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
     private var accessibilityPromptShown = false
 
     @JavascriptInterface
