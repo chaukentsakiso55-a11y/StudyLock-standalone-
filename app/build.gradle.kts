@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.4-firebase-ai-tutor"
+        versionCode = 7
+        versionName = "1.0.5-managed-ai-backend"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -104,6 +104,7 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-functions")
     implementation("com.google.firebase:firebase-ai")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-appcheck-debug")

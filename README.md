@@ -13,7 +13,7 @@ This repository rebuilds StudyLock around the supplied standalone HTML without c
 - Persistent, PBKDF2-hashed parent password required to end a session early
 - Persistent custom block list with installed-app label and package matching
 - Back-button exit protection during active focus sessions
-- Native Gemini/OpenRouter tutor bridge that avoids Android WebView CORS failures
+- Managed Firebase callable AI Tutor backend powered by Vertex AI\n- No student-entered API key; Firebase App Check protects tutor requests\n- Direct Firebase AI Logic and personal-provider paths remain emergency fallbacks
 - Firebase Authentication and Cloud Firestore sync bridge
 - Firebase App Check providers for debug and Play Integrity builds
 - GitHub Actions test, lint, APK build and checksum artifact
@@ -41,9 +41,19 @@ Enable Email/Password and Anonymous authentication in Firebase Authentication. D
 
 The blocker reads only the active app package name. It does not retrieve screen text or perform gestures. Focus cannot start until Accessibility access is enabled. StudyLock maps common names and domains to packages, checks installed-app labels for custom entries, and accepts Android package names directly.
 
-## AI tutor setup
+## AI tutor backend
 
-Open StudyLock Settings, paste either a Google AI Studio Gemini key (`AIza...`) or an OpenRouter key (`sk-or-v1-...`), save it, and press **Test connection**. Gemini keys use `gemini-3.8-flash`; OpenRouter keys default to the current `openrouter/free` router. The key stays on the device and is excluded from Firebase state sync.
+The Android app calls the Firebase callable function `studyLockTutor` first. The function uses the Firebase/Google Cloud service identity to call Vertex AI, so students never paste an AI key and no provider key is stored in the APK.
+
+One owner-side deployment is required:
+
+1. Upgrade `studylock-family` to the Blaze plan.
+2. Enable the Vertex AI API.
+3. Grant the Cloud Functions runtime service account the **Vertex AI User** role.
+4. Run `firebase deploy --only functions:studyLockTutor`.
+5. Keep App Check enforced. For debug APKs, register the device's App Check debug token.
+
+The function scales to zero and caps at five instances to limit costs. If it is not deployed, the app tries Firebase AI Logic directly, still without asking the student for a key.
 
 ## Verify the exact HTML
 

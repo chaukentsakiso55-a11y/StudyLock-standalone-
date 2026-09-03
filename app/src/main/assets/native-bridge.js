@@ -69,7 +69,12 @@
       tutorRequests.set(requestId, { resolve, reject, timeout });
 
       try {
-        native.requestTutor(requestId, JSON.stringify({ apiKey, model, body }));
+        native.requestTutor(requestId, JSON.stringify({
+          apiKey,
+          model,
+          body,
+          preferPersonal: Boolean(overrideApiKey)
+        }));
       } catch (error) {
         clearTimeout(timeout);
         tutorRequests.delete(requestId);
@@ -308,6 +313,14 @@
         restoreFocusFromNative(nativeState);
         if (!nativeState.firebaseConfigured) {
           console.info('StudyLock Firebase is not configured.');
+        } else {
+          document.documentElement.dataset.studylockManagedAi = 'connected';
+          if (!document.getElementById('studylockManagedAiStyle')) {
+            const style = document.createElement('style');
+            style.id = 'studylockManagedAiStyle';
+            style.textContent = '[data-studylock-managed-ai="connected"] #apiKeySection{display:none!important}';
+            document.head.appendChild(style);
+          }
         }
         if (nativeState.focusActive && !nativeState.accessibilityEnabled) {
           showToast('Focus is active, but Android app blocking still needs Accessibility access.');

@@ -24,6 +24,15 @@ jobs:
           java-version: "17"
           cache: gradle
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Validate AI backend
+        working-directory: functions
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund
+          npm run check
+          node -e "require('./index.js')"
       - name: Verify exact HTML
         run: ./scripts/verify-html.sh
       - name: Verify WebView JavaScript
