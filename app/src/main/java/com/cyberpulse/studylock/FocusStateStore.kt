@@ -9,13 +9,15 @@ object FocusStateStore {
     private const val REMAINING_SECONDS = "remaining_seconds"
     private const val END_EPOCH_MILLIS = "end_epoch_millis"
     private const val BLOCKED_PACKAGES = "blocked_packages"
+    private const val BLOCKED_ENTRIES = "blocked_entries"
 
     fun update(
         context: Context,
         active: Boolean,
         paused: Boolean,
         remainingSeconds: Int,
-        blockedPackages: Set<String>
+        blockedPackages: Set<String>,
+        blockedEntries: Set<String>
     ) {
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .edit()
@@ -31,6 +33,7 @@ object FocusStateStore {
                 }
             )
             .putStringSet(BLOCKED_PACKAGES, blockedPackages)
+            .putStringSet(BLOCKED_ENTRIES, blockedEntries)
             .apply()
     }
 
@@ -57,6 +60,12 @@ object FocusStateStore {
     fun blockedPackages(context: Context): Set<String> =
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             .getStringSet(BLOCKED_PACKAGES, emptySet())
+            ?.toSet()
+            .orEmpty()
+
+    fun blockedEntries(context: Context): Set<String> =
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+            .getStringSet(BLOCKED_ENTRIES, emptySet())
             ?.toSet()
             .orEmpty()
 }

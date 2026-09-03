@@ -13,7 +13,12 @@ class AppBlockAccessibilityService : AccessibilityService() {
         val packageName = event?.packageName?.toString() ?: return
         if (packageName == this.packageName) return
         if (!FocusStateStore.isActive(this)) return
-        if (packageName !in FocusStateStore.blockedPackages(this)) return
+        val blockedPackages = FocusStateStore.blockedPackages(this)
+        val blockedEntries = FocusStateStore.blockedEntries(this)
+        if (
+            packageName !in blockedPackages &&
+            !BlockedAppResolver.matches(this, packageName, blockedEntries)
+        ) return
 
         val now = SystemClock.elapsedRealtime()
         if (packageName == lastRedirectedPackage && now - lastRedirectAt < 900L) return

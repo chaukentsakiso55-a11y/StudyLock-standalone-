@@ -3018,29 +3018,27 @@
         </div>
 
         <div class="settings-section" id="apiKeySection" style="display:none;">
-          <div class="settings-label">AI tutor & quiz (outside claude.ai)</div>
-          <div class="settings-hint" style="margin-bottom:12px;">The AI tutor and quiz generator already work with no setup — no key required. Add your own OpenRouter key below only if you'd like to pick a specific or paid model instead.</div>
+          <div class="settings-label">AI tutor & quiz</div>
+          <div class="settings-hint" style="margin-bottom:12px;">General questions need an online AI provider. Save either a Google AI Studio Gemini key or an OpenRouter key, then test the connection.</div>
 
           <select class="model-select" id="modelSelect">
-            <option value="meta-llama/llama-3.1-70b-instruct:free">Llama 3.1 70B — Free, very smart</option>
-            <option value="meta-llama/llama-3.1-405b-instruct:free">Llama 3.1 405B — Free, most powerful</option>
-            <option value="google/gemini-flash-1.5:free">Gemini 1.5 Flash — Free, fast, web search</option>
-            <option value="openai/gpt-4o-mini">GPT-4o Mini — Paid, cheapest OpenAI</option>
+            <option value="openrouter/free">OpenRouter Free Router — Recommended</option>
+            <option value="openrouter/auto">OpenRouter Auto Router — Paid models allowed</option>
           </select>
 
           <div class="web-search-toggle">
             <div class="toggle" id="webSearchToggle"><div class="toggle-knob"></div></div>
-            <span class="web-search-toggle-label">Web search for current info (Gemini only)</span>
+            <span class="web-search-toggle-label">Web search when supported</span>
           </div>
 
-          <div class="settings-row-label" style="margin-bottom:8px;">OpenRouter API key (optional)</div>
+          <div class="settings-row-label" style="margin-bottom:8px;">Gemini or OpenRouter API key</div>
           <div class="api-key-field">
-            <input type="password" class="settings-input api-key-input" id="apiKeyInput" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false" style="margin-bottom:0;">
+            <input type="password" class="settings-input api-key-input" id="apiKeyInput" placeholder="AIza... or sk-or-v1-..." autocomplete="off" spellcheck="false" style="margin-bottom:0;">
             <button class="api-key-eye-btn" id="toggleKeyVisibilityBtn" aria-label="Show API key" type="button">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
-          <div class="settings-row-sub" id="apiKeyStatusSub" style="margin:6px 0 12px;">Not set — using the free built-in model</div>
+          <div class="settings-row-sub" id="apiKeyStatusSub" style="margin:6px 0 12px;">Not set — AI setup required</div>
 
           <div class="api-key-btn-row">
             <button class="settings-btn primary" id="saveApiKeyBtn">Save key</button>
@@ -3328,10 +3326,8 @@
   const LOCAL_WEBSEARCH_STORAGE = 'studylock_openrouter_websearch';
 
   const OPENROUTER_MODELS = {
-    'meta-llama/llama-3.1-70b-instruct:free': { name: 'Llama 3.1 70B', free: true, web: false },
-    'meta-llama/llama-3.1-405b-instruct:free': { name: 'Llama 3.1 405B', free: true, web: false },
-    'google/gemini-flash-1.5:free': { name: 'Gemini Flash', free: true, web: true },
-    'openai/gpt-4o-mini': { name: 'GPT-4o Mini', free: false, web: false }
+    'openrouter/free': { name: 'OpenRouter Free Router', free: true, web: false },
+    'openrouter/auto': { name: 'OpenRouter Auto Router', free: false, web: true }
   };
 
   // Claude.ai artifacts render inside a sandboxed iframe whose ancestor
@@ -3360,8 +3356,9 @@
   let isClaudeArtifactEnv = detectClaudeArtifactEnv();
   let cachedApiKey = null;
   try{ cachedApiKey = localStorage.getItem(LOCAL_KEY_STORAGE); } catch(e){ /* storage unavailable */ }
-  let currentOpenRouterModel = 'meta-llama/llama-3.1-70b-instruct:free';
+  let currentOpenRouterModel = 'openrouter/free';
   try{ currentOpenRouterModel = localStorage.getItem(LOCAL_MODEL_STORAGE) || currentOpenRouterModel; } catch(e){ /* ignore */ }
+  if(!OPENROUTER_MODELS[currentOpenRouterModel]) currentOpenRouterModel = 'openrouter/free';
   let webSearchEnabled = false;
   try{ webSearchEnabled = localStorage.getItem(LOCAL_WEBSEARCH_STORAGE) === 'true'; } catch(e){ /* ignore */ }
 
@@ -3447,7 +3444,7 @@
     }
     (anthropicBody.messages || []).forEach(m => messages.push({ role: m.role, content: m.content }));
 
-    const model = OPENROUTER_MODELS[currentOpenRouterModel] ? currentOpenRouterModel : 'meta-llama/llama-3.1-70b-instruct:free';
+    const model = OPENROUTER_MODELS[currentOpenRouterModel] ? currentOpenRouterModel : 'openrouter/free';
     const modelInfo = OPENROUTER_MODELS[model];
 
     const body = {
@@ -3457,8 +3454,8 @@
       temperature: 0.4,
       stream: !!anthropicBody.stream
     };
-    if(webSearchEnabled && modelInfo && modelInfo.web && model.includes('gemini')){
-      body.tools = [{ type: 'google_search' }];
+    if(webSearchEnabled && modelInfo && modelInfo.web){
+      body.plugins = [{ id: 'web' }];
     }
     return body;
   }
@@ -3545,6 +3542,14 @@
   // that stops the chain is an actual successful response — so a single
   // bad request never dead-ends the conversation.
   async function callAI(anthropicBody){
+    // Android uses a native network bridge so WebView CORS rules cannot turn
+    // successful provider responses into empty tutor messages.
+    if(typeof window.studyLockNativeAI === 'function'){
+      const nativeText = (await window.studyLockNativeAI(anthropicBody)).trim();
+      if(!nativeText) throw new Error('The AI provider returned an empty answer.');
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: nativeText }] }), { status: 200 });
+    }
+
     // Tier 1: only attempted when we're confident we're actually running
     // inside a claude.ai artifact iframe, where the platform intercepts this
     // call and injects auth. Never attempted in standalone use, so opening
@@ -3609,60 +3614,7 @@
       }
     }
 
-    // Tier 3 (the default, always-available case): Pollinations' free
-    // text-generation API. No signup, no key, works straight from the
-    // browser — this is what makes the tutor and quiz generator work with
-    // zero setup, with or without Claude. Retried once on transient failure
-    // so a single dropped connection doesn't sink the whole reply.
-    let lastErr = null;
-    for(let attempt = 0; attempt < 2; attempt++){
-      try{
-        const pollinationsBody = toPollinationsBody(anthropicBody);
-        const res = await fetchWithTimeout(POLLINATIONS_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(pollinationsBody)
-        }, AI_TIMEOUT_MS);
-
-        if(!res.ok){
-          if(attempt === 0) continue; // one retry before giving up
-          break; // fall through to the GET-based last resort below
-        }
-        if(pollinationsBody.stream){
-          return wrapOpenRouterStreamAsAnthropic(res);
-        }
-        const json = await res.json();
-        const translatedJson = wrapOpenRouterJsonAsAnthropic(json);
-        return new Response(JSON.stringify(translatedJson), { status: res.status });
-      } catch(networkErr){
-        lastErr = networkErr;
-        if(attempt === 1) break; // fall through to the GET-based last resort below
-        // else retry once
-      }
-    }
-
-    // Tier 4 (last resort): Pollinations' plain GET endpoint. Simpler
-    // request shape than the POST/JSON tier above, so it can succeed in
-    // situations where that one is blocked (e.g. some extensions/networks
-    // treat preflighted POSTs more strictly than plain GETs). Only carries
-    // the latest question, not full history, but a real answer beats none.
-    try{
-      const getUrl = toPollinationsSimpleGetUrl(anthropicBody);
-      const res = await fetchWithTimeout(getUrl, { method: 'GET' }, AI_TIMEOUT_MS);
-      if(res.ok){
-        const text = (await res.text()).trim();
-        if(text){
-          if(anthropicBody.stream) return toFakeAnthropicStreamResponse(text);
-          return new Response(JSON.stringify({ content: [{ type: 'text', text: text }] }), { status: 200 });
-        }
-      }
-    } catch(finalErr){
-      lastErr = finalErr;
-    }
-
-    // Every tier failed — surface a clear, honest error instead of hanging.
-    if(lastErr) throw lastErr;
-    return new Response(JSON.stringify({ content: [] }), { status: 503 });
+    throw new Error('Add a Gemini or OpenRouter API key in Settings, then test the connection.');
   }
 
   // ---------- Liquid glass specular tracking ----------
@@ -3693,12 +3645,27 @@
 
 
   // ---------- State ----------
-  let blockedSites = [
+  const BLOCKED_SITES_STORAGE = 'studylock_blocked_sites';
+  const DEFAULT_BLOCKED_SITES = [
     { name: 'instagram.com', icon: 'IG' },
     { name: 'tiktok.com', icon: 'TT' },
     { name: 'youtube.com', icon: 'YT' },
     { name: 'twitter.com / x.com', icon: 'X' },
   ];
+  let blockedSites = DEFAULT_BLOCKED_SITES.map(site => ({ ...site }));
+  try{
+    const savedBlockedSites = JSON.parse(localStorage.getItem(BLOCKED_SITES_STORAGE) || 'null');
+    if(Array.isArray(savedBlockedSites)){
+      blockedSites = savedBlockedSites
+        .filter(site => site && typeof site.name === 'string' && site.name.trim())
+        .map(site => ({ name: site.name.trim(), icon: iconFor(site.name) }));
+    }
+  } catch(e){ /* keep defaults */ }
+
+  function saveBlockedSites(){
+    try{ localStorage.setItem(BLOCKED_SITES_STORAGE, JSON.stringify(blockedSites)); }
+    catch(e){ showToast('Could not save the block list on this device.'); }
+  }
 
   // ---------- Motivation quotes ----------
   const MOTIVATION_QUOTES = [
@@ -3899,9 +3866,46 @@
     streak: 0,
   };
 
-  // Parent password is stored in memory only for this session (no localStorage
-  // available in this environment). null = no password set yet.
-  let parentPassword = null;
+  const PARENT_PASSWORD_HASH_STORAGE = 'studylock_parent_password_hash_v1';
+
+  function hasSavedParentPassword(){
+    try{
+      if(window.StudyLockNative && window.StudyLockNative.hasParentPassword()) return true;
+    } catch(e){ /* use browser storage fallback */ }
+    try{ return !!localStorage.getItem(PARENT_PASSWORD_HASH_STORAGE); }
+    catch(e){ return false; }
+  }
+
+  async function hashParentPassword(password){
+    const bytes = new TextEncoder().encode(password);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function saveParentPasswordSecurely(password){
+    try{
+      if(window.StudyLockNative) return !!window.StudyLockNative.saveParentPassword(password);
+    } catch(e){ /* use browser storage fallback */ }
+    try{
+      localStorage.setItem(PARENT_PASSWORD_HASH_STORAGE, await hashParentPassword(password));
+      return true;
+    } catch(e){ return false; }
+  }
+
+  async function verifyParentPassword(password){
+    try{
+      if(window.StudyLockNative && window.StudyLockNative.hasParentPassword()){
+        return !!window.StudyLockNative.verifyParentPassword(password);
+      }
+    } catch(e){ /* use browser storage fallback */ }
+    try{
+      const expected = localStorage.getItem(PARENT_PASSWORD_HASH_STORAGE);
+      return !!expected && expected === await hashParentPassword(password);
+    } catch(e){ return false; }
+  }
+
+  // A marker is enough here; the actual password is never kept in this variable.
+  let parentPassword = hasSavedParentPassword() ? '__saved_securely__' : null;
   let settingsUnlocked = false;
   let isChangingPassword = false;
 
@@ -4940,7 +4944,7 @@ RULES:
       chatHistory.push({ role: 'assistant', content: fullText });
       speakTutorReply(fullText);
     } catch(err){
-      liveBubble.textContent = "Something went wrong reaching the tutor. Check your connection and try again.";
+      liveBubble.textContent = err.message || "Something went wrong reaching the tutor. Check your connection and try again.";
       liveBubble.classList.add('error');
       console.error('Tutor error:', err);
     } finally{
@@ -5175,7 +5179,7 @@ RULES:
 
     } catch(err){
       console.error('Quiz generation error:', err);
-      showToast("Couldn't build that quiz — try a different topic or try again");
+      showToast(err.message || "Couldn't build that quiz — try a different topic or try again");
       showQuizScreen('setup');
     } finally{
       quizGenerating = false;
@@ -5326,6 +5330,7 @@ RULES:
         const idx = parseInt(e.currentTarget.dataset.idx, 10);
         const removed = blockedSites[idx];
         blockedSites.splice(idx, 1);
+        saveBlockedSites();
         renderSites();
         showToast(removed.name + ' removed from block list');
       });
@@ -5392,6 +5397,22 @@ RULES:
   }
 
   function startSession(){
+    if(parentPassword === null){
+      showSettingsView();
+      openModal(settingsBackdrop);
+      showToast('Set a parent password before starting a protected session.');
+      return;
+    }
+    try{
+      if(window.StudyLockNative && !window.StudyLockNative.isAccessibilityServiceEnabled()){
+        showToast('Enable StudyLock app blocking, then return and start again.');
+        window.StudyLockNative.openAccessibilitySettings();
+        return;
+      }
+    } catch(e){
+      showToast('Could not check Android app-blocking access.');
+      return;
+    }
     state.isLocked = true;
     state.isPaused = false;
     state.totalSeconds = state.selectedPreset * 60;
@@ -5503,6 +5524,7 @@ RULES:
     const val = siteInput.value.trim();
     if(!val) return;
     blockedSites.push({ name: val, icon: iconFor(val) });
+    saveBlockedSites();
     siteInput.value = '';
     renderSites();
     showToast(val + ' added to block list');
@@ -5636,10 +5658,10 @@ RULES:
     const key = cachedApiKey || getStoredApiKey();
     if(key){
       apiKeyInput.value = key;
-      apiKeyStatusSub.textContent = 'Saved in this browser (•••• ' + key.slice(-4) + ')';
+      apiKeyStatusSub.textContent = (key.startsWith('AIza') ? 'Gemini' : 'OpenRouter') + ' key saved (•••• ' + key.slice(-4) + ')';
     } else {
       apiKeyInput.value = '';
-      apiKeyStatusSub.textContent = 'Not set — using the free built-in model';
+      apiKeyStatusSub.textContent = 'Not set — AI setup required';
     }
     apiKeyTestResult.textContent = '';
     apiKeyTestResult.className = 'settings-hint';
@@ -5685,7 +5707,7 @@ RULES:
     cachedApiKey = value;
     apiKeyTestResult.textContent = '';
     apiKeyTestResult.className = 'settings-hint';
-    apiKeyStatusSub.textContent = 'Saved in this browser (•••• ' + value.slice(-4) + ')';
+    apiKeyStatusSub.textContent = (value.startsWith('AIza') ? 'Gemini' : 'OpenRouter') + ' key saved (•••• ' + value.slice(-4) + ')';
     showToast('API key saved');
   });
 
@@ -5699,9 +5721,7 @@ RULES:
     showToast('API key removed');
   });
 
-  // Sends a tiny real request straight to OpenRouter using whatever is
-  // currently in the field (saved or not), so editing the key and verifying
-  // it works is one self-contained loop without leaving Settings.
+  // Sends a tiny real request through the same native path used by the tutor.
   testApiKeyBtn.addEventListener('click', async () => {
     const key = apiKeyInput.value.trim();
     if(!key){
@@ -5713,32 +5733,20 @@ RULES:
     apiKeyTestResult.textContent = 'Testing…';
     apiKeyTestResult.className = 'settings-hint';
     try{
-      const res = await fetch(OPENROUTER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + key,
-          'HTTP-Referer': 'https://studylock.app',
-          'X-Title': 'StudyLock'
-        },
-        body: JSON.stringify({
-          model: (OPENROUTER_MODELS[currentOpenRouterModel] ? currentOpenRouterModel : 'meta-llama/llama-3.1-70b-instruct:free'),
-          messages: [{ role: 'user', content: 'Reply with the single word: OK' }],
-          max_tokens: 5
-        })
-      });
-      if(res.status === 401){
-        apiKeyTestResult.textContent = 'That key was rejected (401) — check it was copied in full.';
-        apiKeyTestResult.className = 'settings-hint error';
-      } else if(!res.ok){
-        apiKeyTestResult.textContent = 'Request failed (status ' + res.status + '). The key format looks right, but the request didn\'t succeed — try again in a moment.';
-        apiKeyTestResult.className = 'settings-hint error';
-      } else {
-        apiKeyTestResult.textContent = '✓ Connected — this key works.';
+      if(typeof window.studyLockNativeAI === 'function'){
+        await window.studyLockNativeAI({
+          system: 'You are testing a study app connection.',
+          messages: [{ role: 'user', content: 'Reply with the single word OK.' }],
+          max_tokens: 8,
+          stream: false
+        }, key);
+        apiKeyTestResult.textContent = '✓ Connected to ' + (key.startsWith('AIza') ? 'Gemini' : 'OpenRouter') + '.';
         apiKeyTestResult.className = 'settings-hint success';
+      } else {
+        throw new Error('Install the Android app to test this provider connection.');
       }
     } catch(networkErr){
-      apiKeyTestResult.textContent = 'Could not reach OpenRouter — check your internet connection.';
+      apiKeyTestResult.textContent = networkErr.message || 'Could not reach the AI provider.';
       apiKeyTestResult.className = 'settings-hint error';
     } finally{
       testApiKeyBtn.disabled = false;
@@ -6102,8 +6110,8 @@ RULES:
     }
   });
 
-  gateUnlockBtn.addEventListener('click', () => {
-    if(gatePasswordInput.value === parentPassword){
+  gateUnlockBtn.addEventListener('click', async () => {
+    if(await verifyParentPassword(gatePasswordInput.value)){
       settingsUnlocked = true;
       showSettingsView();
       showToast('Settings unlocked');
@@ -6113,7 +6121,7 @@ RULES:
   });
   gatePasswordInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') gateUnlockBtn.click(); });
 
-  setupSaveBtn.addEventListener('click', () => {
+  setupSaveBtn.addEventListener('click', async () => {
     const pw = setupPasswordInput.value;
     const confirm = setupPasswordConfirm.value;
     if(pw.length < 4 || pw !== confirm){
@@ -6121,7 +6129,12 @@ RULES:
       return;
     }
     setupError.classList.remove('show');
-    parentPassword = pw;
+    if(!await saveParentPasswordSecurely(pw)){
+      setupError.textContent = 'The password could not be saved. Please try again.';
+      setupError.classList.add('show');
+      return;
+    }
+    parentPassword = '__saved_securely__';
     settingsUnlocked = true;
     isChangingPassword = false;
     setupPasswordInput.value = '';
@@ -6546,6 +6559,7 @@ RULES:
         const idx = parseInt(e.currentTarget.dataset.idx, 10);
         const removed = blockedSites[idx];
         blockedSites.splice(idx, 1);
+        saveBlockedSites();
         renderSettingsSiteList();
         renderSites();
         showToast(removed.name + ' removed from block list');
@@ -6557,6 +6571,7 @@ RULES:
     const val = settingsSiteInput.value.trim();
     if(!val) return;
     blockedSites.push({ name: val, icon: iconFor(val) });
+    saveBlockedSites();
     settingsSiteInput.value = '';
     renderSettingsSiteList();
     renderSites();
@@ -6586,8 +6601,8 @@ RULES:
   closeEndSessionBtn.addEventListener('click', closeEndSessionPrompt);
   endSessionBackdrop.addEventListener('click', (e) => { if(e.target === endSessionBackdrop) closeEndSessionPrompt(); });
 
-  endSessionConfirmBtn.addEventListener('click', () => {
-    if(endSessionPasswordInput.value === parentPassword){
+  endSessionConfirmBtn.addEventListener('click', async () => {
+    if(await verifyParentPassword(endSessionPasswordInput.value)){
       closeEndSessionPrompt();
       endSessionEarly();
     } else {

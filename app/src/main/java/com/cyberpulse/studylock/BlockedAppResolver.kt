@@ -1,5 +1,10 @@
 package com.cyberpulse.studylock
 
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.os.Build
+
 object BlockedAppResolver {
     private val aliases = linkedMapOf(
         "instagram" to setOf("com.instagram.android"),
@@ -16,7 +21,12 @@ object BlockedAppResolver {
         "reddit" to setOf("com.reddit.frontpage"),
         "netflix" to setOf("com.netflix.mediaclient"),
         "chrome" to setOf("com.android.chrome"),
-        "whatsapp" to setOf("com.whatsapp")
+        "samsung internet" to setOf("com.sec.android.app.sbrowser"),
+        "whatsapp" to setOf("com.whatsapp"),
+        "telegram" to setOf("org.telegram.messenger"),
+        "discord" to setOf("com.discord"),
+        "spotify" to setOf("com.spotify.music"),
+        "roblox" to setOf("com.roblox.client")
     )
 
     private val packagePattern = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z0-9_]+){1,}$")
@@ -34,4 +44,63 @@ object BlockedAppResolver {
             }
         }
     }
+
+    fun resolve(context: Context, entries: List<String>): Set<String> = buildSet {
+        addAll(resolve(entries))
+        installedApplications(context).forEach { application ->
+            if (matches(context, application.packageName, entries.toSet())) {
+                add(application.packageName)
+            }
+        }
+    }
+
+    fun matches(context: Context, packageName: String, entries: Set<String>): Boolean {
+        if (packageName in resolve(entries.toList())) return true
+        val label = runCatching {
+            val application = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(0)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getApplicationInfo(packageName, 0)
+            }
+            context.packageManager.getApplicationLabel(application).toString()
+        }.getOrNull() ?: return false
+
+        val packageKey = canonical(packageName)
+        val labelKey = canonical(label)
+        return entries.any { entry ->
+            val entryKey = canonical(
+                entry
+                    .replace(Regex("^https?://"), "")
+                    .replace(Regex("^www\\."), "")
+                    .substringBefore('/')
+                    .substringBefore(".com")
+                    .substringBefore(".net")
+                    .substringBefore(".org")
+            )
+            entryKey.length >= 3 && (
+                entryKey == labelKey ||
+                    entryKey == packageKey ||
+                    labelKey.contains(entryKey) ||
+                    entryKey.contains(labelKey)
+                )
+        }
+    }
+
+    private fun installedApplications(context: Context): List<ApplicationInfo> = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getInstalledApplications(
+                PackageManager.ApplicationInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getInstalledApplications(0)
+        }
+    }.getOrDefault(emptyList())
+
+    private fun canonical(value: String): String =
+        value.lowercase().replace(Regex("[^a-z0-9]"), "")
 }

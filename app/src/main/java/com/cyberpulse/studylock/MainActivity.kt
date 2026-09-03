@@ -303,6 +303,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
     override fun onDestroy() {
         speechRecognizer?.destroy()
+        if (::nativeBridge.isInitialized) nativeBridge.close()
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         if (::webView.isInitialized) {

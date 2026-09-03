@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.view.accessibility.AccessibilityManager
 import android.webkit.JavascriptInterface
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
@@ -14,6 +15,7 @@ class StudyLockNativeBridge(
     private val firebaseGateway: FirebaseGateway
 ) {
     private val appContext: Context = activity.applicationContext
+    private val aiTutorGateway = AiTutorGateway()
     private var accessibilityPromptShown = false
 
     @JavascriptInterface
@@ -41,6 +43,22 @@ class StudyLockNativeBridge(
     }
 
     @JavascriptInterface
+    fun hasParentPassword(): Boolean = ParentPasswordStore.hasPassword(appContext)
+
+    @JavascriptInterface
+    fun saveParentPassword(password: String): Boolean =
+        ParentPasswordStore.save(appContext, password)
+
+    @JavascriptInterface
+    fun verifyParentPassword(password: String): Boolean =
+        ParentPasswordStore.verify(appContext, password)
+
+    @JavascriptInterface
+    fun requestTutor(requestId: String, payload: String) {
+        aiTutorGateway.request(payload) { result -> emitTutorResult(requestId, result) }
+    }
+
+    @JavascriptInterface
     fun onFocusState(
         active: Boolean,
         paused: Boolean,
@@ -63,7 +81,8 @@ class StudyLockNativeBridge(
             active = active,
             paused = paused,
             remainingSeconds = remainingSeconds.coerceAtLeast(0),
-            blockedPackages = BlockedAppResolver.resolve(entries)
+            blockedPackages = BlockedAppResolver.resolve(appContext, entries),
+            blockedEntries = entries.toSet()
         )
 
         if (
@@ -103,6 +122,18 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun isAccessibilityServiceEnabled(): Boolean {
+        val manager = appContext.getSystemService(AccessibilityManager::class.java)
+        val enabledByManager = manager
+            ?.getEnabledAccessibilityServiceList(
+                android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+            )
+            ?.any { service ->
+                val info = service.resolveInfo.serviceInfo
+                info.packageName == appContext.packageName &&
+                    info.name == AppBlockAccessibilityService::class.java.name
+            } == true
+        if (enabledByManager) return true
+
         val enabled = Settings.Secure.getString(
             appContext.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
@@ -129,6 +160,10 @@ class StudyLockNativeBridge(
         )
     }
 
+    fun close() {
+        aiTutorGateway.close()
+    }
+
     private fun emitAuthResult(result: FirebaseGateway.AuthResult) {
         activity.runJavascript(
             "window.StudyLockNativeHooks?.onAuthResult(" +
@@ -136,6 +171,16 @@ class StudyLockNativeBridge(
                 "${JSONObject.quote(result.message)}," +
                 "${JSONObject.quote(result.name.orEmpty())}," +
                 "${JSONObject.quote(result.email.orEmpty())});"
+        )
+    }
+
+    private fun emitTutorResult(requestId: String, result: AiTutorGateway.Result) {
+        activity.runJavascript(
+            "window.StudyLockNativeHooks?.onTutorResult(" +
+                "${JSONObject.quote(requestId)}," +
+                "${result.success}," +
+                "${JSONObject.quote(result.text)}," +
+                "${JSONObject.quote(result.message)});"
         )
     }
 }

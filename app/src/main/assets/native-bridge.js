@@ -15,6 +15,8 @@
   let lastCloudPayload = '';
   let lastFocusPayload = '';
   let lastMusicPayload = '';
+  let nextTutorRequestId = 1;
+  const tutorRequests = new Map();
 
   function showToast(message) {
     const toast = document.getElementById('toast');
@@ -49,6 +51,32 @@
     try { return native.isFirebaseConfigured(); }
     catch (_) { return false; }
   }
+
+  window.studyLockNativeAI = function requestNativeAI(body, overrideApiKey) {
+    return new Promise((resolve, reject) => {
+      const requestId = String(nextTutorRequestId++);
+      let apiKey = overrideApiKey || '';
+      let model = 'openrouter/free';
+      try {
+        apiKey = apiKey || localStorage.getItem('studylock_openrouter_api_key') || '';
+        model = localStorage.getItem('studylock_openrouter_model') || model;
+      } catch (_) {}
+
+      const timeout = setTimeout(() => {
+        tutorRequests.delete(requestId);
+        reject(new Error('The AI provider timed out. Check your connection and try again.'));
+      }, 45000);
+      tutorRequests.set(requestId, { resolve, reject, timeout });
+
+      try {
+        native.requestTutor(requestId, JSON.stringify({ apiKey, model, body }));
+      } catch (error) {
+        clearTimeout(timeout);
+        tutorRequests.delete(requestId);
+        reject(error);
+      }
+    });
+  };
 
   const signupButton = document.getElementById('signupSubmitBtn');
   signupButton?.addEventListener('click', event => {
@@ -246,6 +274,14 @@
     onSpeechError(message) {
       document.querySelectorAll('.mic-btn.listening').forEach(button => button.classList.remove('listening'));
       showToast(message);
+    },
+    onTutorResult(requestId, success, answer, message) {
+      const pending = tutorRequests.get(String(requestId));
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      tutorRequests.delete(String(requestId));
+      if (success) pending.resolve(answer);
+      else pending.reject(new Error(message || 'The AI provider could not answer.'));
     },
     onNativeState(rawState) {
       try {

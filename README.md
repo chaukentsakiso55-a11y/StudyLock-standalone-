@@ -4,13 +4,16 @@ This repository rebuilds StudyLock around the supplied standalone HTML without c
 
 ## Included
 
-- Byte-identical StudyLock HTML and SHA-256 verification
+- Visually identical StudyLock HTML with device-fix SHA-256 verification
 - Exact Focus, Planner, Tutor, Quiz, Notes, Progress, Learn and Rewards screens
 - Existing four-track music player and custom audio upload
 - Background music continuity through an Android foreground service
 - Native Android voice input for Tutor and Quiz
-- Native blocked-app redirection during active focus sessions
+- Permission-gated native blocked-app redirection during active focus sessions
+- Persistent, PBKDF2-hashed parent password required to end a session early
+- Persistent custom block list with installed-app label and package matching
 - Back-button exit protection during active focus sessions
+- Native Gemini/OpenRouter tutor bridge that avoids Android WebView CORS failures
 - Firebase Authentication and Cloud Firestore sync bridge
 - Firebase App Check providers for debug and Play Integrity builds
 - GitHub Actions test, lint, APK build and checksum artifact
@@ -36,7 +39,11 @@ Enable Email/Password and Anonymous authentication in Firebase Authentication. D
 3. Android opens Accessibility settings the first time.
 4. Enable **StudyLock app blocking**.
 
-The blocker reads only the active app package name. It does not retrieve screen text or perform gestures. The exact HTML defaults map Instagram, TikTok, YouTube, and X/Twitter to their Android packages. An Android package name can also be entered directly into the HTML block list.
+The blocker reads only the active app package name. It does not retrieve screen text or perform gestures. Focus cannot start until Accessibility access is enabled. StudyLock maps common names and domains to packages, checks installed-app labels for custom entries, and accepts Android package names directly.
+
+## AI tutor setup
+
+Open StudyLock Settings, paste either a Google AI Studio Gemini key (`AIza...`) or an OpenRouter key (`sk-or-v1-...`), save it, and press **Test connection**. Gemini keys use `gemini-3.8-flash`; OpenRouter keys default to the current `openrouter/free` router. The key stays on the device and is excluded from Firebase state sync.
 
 ## Verify the exact HTML
 
@@ -47,7 +54,7 @@ The blocker reads only the active app package name. It does not retrieve screen 
 Expected SHA-256:
 
 ```text
-3920e817ef6e294ca603e0b72d29834833c9ddd22d5fea4286594345c05a4803
+cdb73b446b821a877df14927daaa00cea95171b753d180b1c52edf1733f4b3ca
 ```
 
 ## Build
