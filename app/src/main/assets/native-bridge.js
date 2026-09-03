@@ -81,7 +81,7 @@
   const signupButton = document.getElementById('signupSubmitBtn');
   signupButton?.addEventListener('click', event => {
     if (!firebaseEnabled()) {
-      showToast('Firebase needs the rotated StudyLock key. Local mode is still available.');
+      showToast('Firebase is not configured. Local mode is still available.');
       return;
     }
     const name = document.getElementById('signupName')?.value.trim() || '';
@@ -98,7 +98,7 @@
   const loginButton = document.getElementById('loginSubmitBtn');
   loginButton?.addEventListener('click', event => {
     if (!firebaseEnabled()) {
-      showToast('Firebase needs the rotated StudyLock key. Local mode is still available.');
+      showToast('Firebase is not configured. Local mode is still available.');
       return;
     }
     const email = document.getElementById('loginEmail')?.value.trim() || '';
@@ -244,6 +244,25 @@
   wireNativeMicrophone('chatMicBtn', 'chat');
   wireNativeMicrophone('quizMicBtn', 'quiz');
 
+  function restoreFocusFromNative(nativeState) {
+    if (!nativeState || !nativeState.focusActive) return;
+    try {
+      if (typeof state === 'undefined') return;
+      const remaining = Math.max(0, Number(nativeState.focusRemainingSeconds) || 0);
+      state.isLocked = true;
+      state.isPaused = !!nativeState.focusPaused;
+      state.remainingSeconds = remaining;
+      state.totalSeconds = Math.max(Number(state.totalSeconds) || 0, remaining);
+      if (typeof updateLockVisuals === 'function') updateLockVisuals();
+      if (typeof render === 'function') render();
+      if (typeof tickHandle !== 'undefined' && !tickHandle && remaining > 0 && typeof tick === 'function') {
+        tickHandle = setInterval(tick, 1000);
+      }
+    } catch (error) {
+      console.warn('StudyLock could not restore the native focus session.', error);
+    }
+  }
+
   window.StudyLockNativeHooks = {
     showToast,
     onAuthResult(success, message, name, email) {
@@ -285,18 +304,19 @@
     },
     onNativeState(rawState) {
       try {
-        const state = JSON.parse(rawState);
-        if (!state.firebaseConfigured) {
-          console.info('StudyLock Firebase is awaiting the rotated API key.');
+        const nativeState = JSON.parse(rawState);
+        restoreFocusFromNative(nativeState);
+        if (!nativeState.firebaseConfigured) {
+          console.info('StudyLock Firebase is not configured.');
         }
-        if (state.focusActive && !state.accessibilityEnabled) {
+        if (nativeState.focusActive && !nativeState.accessibilityEnabled) {
           showToast('Focus is active, but Android app blocking still needs Accessibility access.');
         }
       } catch (_) {}
     }
   };
 
-  syncAll();
   try { window.StudyLockNativeHooks.onNativeState(native.getNativeState()); }
   catch (_) {}
+  syncAll();
 })();
