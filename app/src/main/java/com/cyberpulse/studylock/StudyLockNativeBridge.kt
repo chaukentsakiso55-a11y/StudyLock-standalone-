@@ -48,7 +48,7 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun saveParentPassword(password: String): Boolean =
-        ParentPasswordStore.save(appContext, password)
+        ParentPasswordStore.save(appContext, verifyNotNull(password))
 
     @JavascriptInterface
     fun verifyParentPassword(password: String): Boolean =
@@ -142,7 +142,7 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun onMusicState(playing: Boolean, trackName: String) {
-        MusicKeepAliveService.updateState(appContext, playing, trackName)
+        MusicStateStore.update(appContext, playing, trackName)
         if (playing) {
             activity.requestNotificationPermissionIfNeeded()
             val intent = Intent(appContext, MusicKeepAliveService::class.java)
@@ -190,12 +190,12 @@ class StudyLockNativeBridge(
         val protection = DeviceProtectionController.status(appContext)
         return JSONObject().apply {
             put("firebaseConfigured", firebaseGateway.isConfigured)
-            put("firebaseProject", BuildConfig.FIRE_SAFETY_PROJECT_ID)
+            put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
             put("accessibilityEnabled", isAccessibilityServiceEnabled())
             put("focusActive", FocusStateStore.isActive(appContext))
             put("focusPaused", FocusStateStore.isPaused(appContext))
             put("focusRemainingSeconds", FocusStateStore.remainingSeconds(appContext))
-            put("musicPlaying", MusicKeepAliveService.isPlaying(appContext))
+            put("musicPlaying", MusicStateStore.isPlaying(appContext))
             put("deviceAdminActive", protection.optBoolean("adminActive"))
             put("deviceOwner", protection.optBoolean("deviceOwner"))
             put("profileOwner", protection.optBoolean("profileOwner"))
