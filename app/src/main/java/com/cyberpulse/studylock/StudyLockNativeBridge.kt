@@ -16,6 +16,7 @@ class StudyLockNativeBridge(
 ) {
     private val appContext: Context = activity.applicationContext
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
+    private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private var accessibilityPromptShown = false
 
     @JavascriptInterface
@@ -81,7 +82,19 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
-        aiTutorGateway.request(payload) { result -> emitTutorResult(requestId, result) }
+        val apiKey = runCatching {
+            JSONObject(payload).optString("apiKey").trim()
+        }.getOrDefault("")
+
+        if (apiKey.startsWith("AQ.")) {
+            geminiAuthTutorGateway.request(payload) { result ->
+                emitTutorResult(requestId, result)
+            }
+        } else {
+            aiTutorGateway.request(payload) { result ->
+                emitTutorResult(requestId, result)
+            }
+        }
     }
 
     @JavascriptInterface
@@ -129,7 +142,7 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun onMusicState(playing: Boolean, trackName: String) {
-        MusicStateStore.update(appContext, playing, trackName)
+        MusicKeepAliveService.updateState(appContext, playing, trackName)
         if (playing) {
             activity.requestNotificationPermissionIfNeeded()
             val intent = Intent(appContext, MusicKeepAliveService::class.java)
@@ -177,12 +190,12 @@ class StudyLockNativeBridge(
         val protection = DeviceProtectionController.status(appContext)
         return JSONObject().apply {
             put("firebaseConfigured", firebaseGateway.isConfigured)
-            put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
+            put("firebaseProject", BuildConfig.FIRE_SAFETY_PROJECT_ID)
             put("accessibilityEnabled", isAccessibilityServiceEnabled())
             put("focusActive", FocusStateStore.isActive(appContext))
             put("focusPaused", FocusStateStore.isPaused(appContext))
             put("focusRemainingSeconds", FocusStateStore.remainingSeconds(appContext))
-            put("musicPlaying", MusicStateStore.isPlaying(appContext))
+            put("musicPlaying", MusicKeepAliveService.isPlaying(appContext))
             put("deviceAdminActive", protection.optBoolean("adminActive"))
             put("deviceOwner", protection.optBoolean("deviceOwner"))
             put("profileOwner", protection.optBoolean("profileOwner"))
@@ -202,6 +215,7 @@ class StudyLockNativeBridge(
 
     fun close() {
         aiTutorGateway.close()
+        geminiAuthTutorGateway.close()
     }
 
     private fun emitAuthResult(result: FirebaseGateway.AuthResult) {
