@@ -37,8 +37,8 @@ for (const token of requiredFlowTokens) {
   if (!app.includes(token)) throw new Error(`Missing simple Allow wizard token: ${token}`);
 }
 
-if (!gradle.includes('versionCode = 13') || !gradle.includes('1.0.11-simple-allow-wizard')) {
-  throw new Error('StudyLock 1.0.11 version bump is missing.');
+if (!gradle.includes('versionCode = 14') || !gradle.includes('1.0.12-auto-ai-offline-dictionary')) {
+  throw new Error('StudyLock 1.0.12 version bump is missing.');
 }
 
 if (app.includes('WRITE_SECURE_SETTINGS') || app.includes('pm grant') || app.includes('device_policy set-active-admin')) {

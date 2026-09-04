@@ -22,6 +22,7 @@ class StudyLockNativeBridge(
     private val appContext: Context = activity.applicationContext
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
     private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
+    private val offlineDictionaryGateway = OfflineDictionaryGateway(appContext)
     private var accessibilityPromptShown = false
     private var cachedBlockedEntries: Set<String> = emptySet()
     private var cachedBlockedPackages: Set<String> = emptySet()
@@ -135,18 +136,55 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
-        val apiKey = runCatching {
-            JSONObject(payload).optString("apiKey").trim()
-        }.getOrDefault("")
+        val request = runCatching { JSONObject(payload) }.getOrElse { JSONObject() }
+        val apiKey = request.optString("apiKey").trim()
+        val managedPayload = JSONObject(request.toString())
+            .put("preferPersonal", false)
+            .toString()
 
-        if (apiKey.startsWith("AQ.")) {
-            geminiAuthTutorGateway.request(payload) { result ->
-                emitTutorResult(requestId, result)
+        firebaseGateway.ensureTutorIdentity { authResult ->
+            if (!authResult.success) {
+                if (apiKey.startsWith("AQ.")) {
+                    geminiAuthTutorGateway.request(payload) { fallback ->
+                        emitTutorResult(requestId, fallback)
+                    }
+                } else {
+                    emitTutorResult(
+                        requestId,
+                        AiTutorGateway.Result(
+                            success = false,
+                            message = authResult.message
+                        )
+                    )
+                }
+                return@ensureTutorIdentity
             }
-        } else {
-            aiTutorGateway.request(payload) { result ->
-                emitTutorResult(requestId, result)
+
+            aiTutorGateway.request(managedPayload) { managedResult ->
+                if (!managedResult.success && apiKey.startsWith("AQ.")) {
+                    geminiAuthTutorGateway.request(payload) { fallback ->
+                        emitTutorResult(
+                            requestId,
+                            if (fallback.success) fallback else managedResult
+                        )
+                    }
+                } else {
+                    emitTutorResult(requestId, managedResult)
+                }
             }
+        }
+    }
+
+    @JavascriptInterface
+    fun lookupOfflineDictionary(requestId: String, word: String) {
+        offlineDictionaryGateway.lookup(word) { result ->
+            activity.runJavascript(
+                "window.StudyLockNativeHooks?.onDictionaryResult(" +
+                    "${JSONObject.quote(requestId)}," +
+                    "${result.success}," +
+                    "${JSONObject.quote(result.payload)}," +
+                    "${JSONObject.quote(result.message)});"
+            )
         }
     }
 
@@ -253,6 +291,8 @@ class StudyLockNativeBridge(
         val protection = DeviceProtectionController.status(appContext)
         return JSONObject().apply {
             put("firebaseConfigured", firebaseGateway.isConfigured)
+            put("firebaseAuthenticated", firebaseGateway.isAuthenticated)
+            put("managedAiConnected", firebaseGateway.isConfigured && firebaseGateway.isAuthenticated)
             put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
             put("accessibilityEnabled", isAccessibilityServiceEnabled())
             put("focusActive", FocusStateStore.isActive(appContext))
@@ -266,6 +306,7 @@ class StudyLockNativeBridge(
             put("uninstallProtectionDesired", protection.optBoolean("protectionDesired"))
             put("uninstallProtectionLevel", protection.optString("level", "off"))
             put("blockedListPolicy", BlockedListPolicyStore.state(appContext))
+            put("offlineDictionary", true)
             put("androidVersion", Build.VERSION.SDK_INT)
         }.toString()
     }
@@ -281,6 +322,7 @@ class StudyLockNativeBridge(
     fun close() {
         aiTutorGateway.close()
         geminiAuthTutorGateway.close()
+        offlineDictionaryGateway.close()
     }
 
     private fun emitAuthResult(result: FirebaseGateway.AuthResult) {
@@ -291,6 +333,7 @@ class StudyLockNativeBridge(
                 "${JSONObject.quote(result.name.orEmpty())}," +
                 "${JSONObject.quote(result.email.orEmpty())});"
         )
+        if (result.success) emitNativeStatus()
     }
 
     private fun emitTutorResult(requestId: String, result: AiTutorGateway.Result) {

@@ -45,6 +45,15 @@ class FirebaseGateway(context: Context) {
         FirebaseFirestore.getInstance(it)
     }
 
+    val isAuthenticated: Boolean
+        get() = auth?.currentUser != null
+
+    val currentUserName: String?
+        get() = auth?.currentUser?.displayName
+
+    val currentUserEmail: String?
+        get() = auth?.currentUser?.email
+
     init {
         firebaseApp?.let { app ->
             runCatching {
@@ -80,7 +89,7 @@ class FirebaseGateway(context: Context) {
                     callback(
                         AuthResult(
                             true,
-                            "Account connected to StudyLock Firebase.",
+                            "Account connected. AI Tutor is ready automatically.",
                             name,
                             email
                         )
@@ -104,7 +113,7 @@ class FirebaseGateway(context: Context) {
                 callback(
                     AuthResult(
                         true,
-                        "Signed in to StudyLock Firebase.",
+                        "Signed in. AI Tutor is connected automatically.",
                         user?.displayName,
                         user?.email
                     )
@@ -119,10 +128,47 @@ class FirebaseGateway(context: Context) {
         val firebaseAuth = auth ?: return callback(missingConfiguration())
         firebaseAuth.signInAnonymously()
             .addOnSuccessListener {
-                callback(AuthResult(true, "Guest session connected to Firebase."))
+                callback(AuthResult(true, "Guest session connected. AI Tutor is ready automatically."))
             }
             .addOnFailureListener { error ->
                 callback(AuthResult(false, friendlyMessage(error)))
+            }
+    }
+
+    fun ensureTutorIdentity(callback: (AuthResult) -> Unit) {
+        val firebaseAuth = auth ?: return callback(missingConfiguration())
+        val current = firebaseAuth.currentUser
+        if (current != null) {
+            callback(
+                AuthResult(
+                    true,
+                    "AI Tutor connected through StudyLock authentication.",
+                    current.displayName,
+                    current.email
+                )
+            )
+            return
+        }
+
+        firebaseAuth.signInAnonymously()
+            .addOnSuccessListener { result ->
+                val user = result.user
+                callback(
+                    AuthResult(
+                        true,
+                        "AI Tutor created a secure Firebase guest session automatically.",
+                        user?.displayName,
+                        user?.email
+                    )
+                )
+            }
+            .addOnFailureListener { error ->
+                callback(
+                    AuthResult(
+                        false,
+                        "StudyLock could not create the automatic AI session: ${friendlyMessage(error)}"
+                    )
+                )
             }
     }
 

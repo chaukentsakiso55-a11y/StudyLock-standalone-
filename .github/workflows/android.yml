@@ -33,6 +33,15 @@ jobs:
           npm install --ignore-scripts --no-audit --no-fund
           npm run check
           node -e "require('./index.js')"
+      - name: Build offline dictionary
+        run: |
+          mkdir -p .dictionary-build
+          npm install --prefix .dictionary-build wordnet-db@3.1.14 --ignore-scripts --no-audit --no-fund
+          python3 scripts/build_offline_dictionary.py \
+            --wordnet-dir .dictionary-build/node_modules/wordnet-db/dict \
+            --output app/src/main/assets/studylock_dictionary.db \
+            --cache-dir .dictionary-cache
+          python3 scripts/check_offline_dictionary.py app/src/main/assets/studylock_dictionary.db
       - name: Verify exact HTML
         run: ./scripts/verify-html.sh
       - name: Verify WebView JavaScript
@@ -43,19 +52,21 @@ jobs:
           node --check app/src/main/assets/studylock-blocklist-policy.js
           node --check app/src/main/assets/studylock-app-picker.js
           node --check app/src/main/assets/studylock-quiz-gate.js
+          node --check app/src/main/assets/studylock-offline-dictionary.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
           node scripts/check-fullscreen-performance.js
-          node scripts/check-version-111.js
+          node scripts/check-version-112.js
           node scripts/check-no-fullscreen-regression.js
           node scripts/check-protection-onboarding.js
+          node scripts/check-auto-ai-offline-dictionary.js
       - name: Build and test
         run: |
           chmod +x gradlew
           ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
       - name: Calculate artifact SHA-256
         run: |
-          sha256sum studylock-exact.html app/src/main/assets/studylock-exact.html app/build/outputs/apk/debug/app-debug.apk > SHA256SUMS-ci.txt
+          sha256sum studylock-exact.html app/src/main/assets/studylock-exact.html app/src/main/assets/studylock_dictionary.db app/build/outputs/apk/debug/app-debug.apk > SHA256SUMS-ci.txt
       - uses: actions/upload-artifact@v4
         with:
           name: StudyLock-exact-debug
