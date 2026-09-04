@@ -28,6 +28,13 @@ class StudyLockNativeBridge(
     private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private val offlineDictionaryGateway = OfflineDictionaryGateway(appContext)
     private val offlineTutorReferenceGateway = OfflineTutorReferenceGateway(appContext)
+    private val bundledGeminiAuthKey: String by lazy {
+        runCatching {
+            appContext.assets.open(PRIVATE_AI_KEY_ASSET)
+                .bufferedReader()
+                .use { it.readText().trim() }
+        }.getOrDefault("")
+    }
     private var accessibilityPromptShown = false
     private var cachedBlockedEntries: Set<String> = emptySet()
     private var cachedBlockedPackages: Set<String> = emptySet()
@@ -142,76 +149,39 @@ class StudyLockNativeBridge(
     @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
         val request = runCatching { JSONObject(payload) }.getOrElse { JSONObject() }
-        val apiKey = request.optString("apiKey").trim()
         val question = latestTutorQuestion(request)
         val managedPayload = JSONObject(request.toString())
+            .put("apiKey", "")
             .put("preferPersonal", false)
             .toString()
 
         if (!isNetworkAvailable()) {
-            if (OfflineTutorLibraryStore.isInstalled(appContext)) {
-                requestOfflineTutor(requestId, question)
-            } else {
-                emitTutorResult(
-                    requestId,
-                    AiTutorGateway.Result(
-                        success = false,
-                        message = "You're offline. Open Settings and tap Download Library to install the Offline Tutor Library."
+            requestOfflineOrUnavailable(requestId, question)
+            return
+        }
+
+        val privateKey = bundledGeminiAuthKey
+        if (privateKey.startsWith("AQ.")) {
+            val privatePayload = JSONObject(request.toString())
+                .put("apiKey", privateKey)
+                .put("preferPersonal", true)
+                .toString()
+            geminiAuthTutorGateway.request(privatePayload) { directResult ->
+                if (directResult.success) {
+                    emitTutorResult(requestId, directResult)
+                } else {
+                    requestManagedTutor(
+                        requestId = requestId,
+                        managedPayload = managedPayload,
+                        question = question,
+                        directFailureMessage = directResult.message
                     )
-                )
+                }
             }
             return
         }
 
-        firebaseGateway.ensureTutorIdentity { authResult ->
-            if (!authResult.success) {
-                if (apiKey.startsWith("AQ.")) {
-                    geminiAuthTutorGateway.request(payload) { fallback ->
-                        if (fallback.success) {
-                            emitTutorResult(requestId, fallback)
-                        } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
-                            requestOfflineTutor(requestId, question)
-                        } else {
-                            emitTutorResult(requestId, fallback)
-                        }
-                    }
-                } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
-                    requestOfflineTutor(requestId, question)
-                } else {
-                    emitTutorResult(
-                        requestId,
-                        AiTutorGateway.Result(
-                            success = false,
-                            message = authResult.message
-                        )
-                    )
-                }
-                return@ensureTutorIdentity
-            }
-
-            aiTutorGateway.request(managedPayload) { managedResult ->
-                if (managedResult.success) {
-                    emitTutorResult(requestId, managedResult)
-                    return@request
-                }
-
-                if (apiKey.startsWith("AQ.")) {
-                    geminiAuthTutorGateway.request(payload) { fallback ->
-                        if (fallback.success) {
-                            emitTutorResult(requestId, fallback)
-                        } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
-                            requestOfflineTutor(requestId, question)
-                        } else {
-                            emitTutorResult(requestId, managedResult)
-                        }
-                    }
-                } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
-                    requestOfflineTutor(requestId, question)
-                } else {
-                    emitTutorResult(requestId, managedResult)
-                }
-            }
-        }
+        requestManagedTutor(requestId, managedPayload, question)
     }
 
     @JavascriptInterface
@@ -233,6 +203,7 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun refreshOfflineLibraryMetadata() {
+        OfflineTutorLibraryStore.ensureStarterInstalled(appContext)
         val app = firebaseGateway.firebaseApp
         if (app == null) {
             OfflineTutorLibraryStore.markUnavailable(
@@ -274,7 +245,7 @@ class StudyLockNativeBridge(
                     if (error is StorageException && error.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND) {
                         OfflineTutorLibraryStore.markUnavailable(
                             appContext,
-                            "The Offline Tutor Library has not been published to StudyLock's download server yet.",
+                            "The full Offline Tutor Library has not been published yet. The included starter library remains available.",
                             published = false
                         )
                     } else {
@@ -416,10 +387,12 @@ class StudyLockNativeBridge(
     @JavascriptInterface
     fun getNativeState(): String {
         val protection = DeviceProtectionController.status(appContext)
+        OfflineTutorLibraryStore.ensureStarterInstalled(appContext)
         return JSONObject().apply {
             put("firebaseConfigured", firebaseGateway.isConfigured)
             put("firebaseAuthenticated", firebaseGateway.isAuthenticated)
             put("managedAiConnected", firebaseGateway.isConfigured && firebaseGateway.isAuthenticated)
+            put("privateAiConfigured", bundledGeminiAuthKey.startsWith("AQ."))
             put("firebaseProject", BuildConfig.FIREBASE_PROJECT_ID)
             put("accessibilityEnabled", isAccessibilityServiceEnabled())
             put("focusActive", FocusStateStore.isActive(appContext))
@@ -453,6 +426,64 @@ class StudyLockNativeBridge(
         geminiAuthTutorGateway.close()
         offlineDictionaryGateway.close()
         offlineTutorReferenceGateway.close()
+    }
+
+    private fun requestManagedTutor(
+        requestId: String,
+        managedPayload: String,
+        question: String,
+        directFailureMessage: String = ""
+    ) {
+        firebaseGateway.ensureTutorIdentity { authResult ->
+            if (!authResult.success) {
+                if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                    requestOfflineTutor(requestId, question)
+                } else {
+                    emitTutorResult(
+                        requestId,
+                        AiTutorGateway.Result(
+                            success = false,
+                            message = directFailureMessage.ifBlank { authResult.message }
+                        )
+                    )
+                }
+                return@ensureTutorIdentity
+            }
+
+            aiTutorGateway.request(managedPayload) { managedResult ->
+                if (managedResult.success) {
+                    emitTutorResult(requestId, managedResult)
+                } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                    requestOfflineTutor(requestId, question)
+                } else {
+                    emitTutorResult(
+                        requestId,
+                        if (directFailureMessage.isBlank()) {
+                            managedResult
+                        } else {
+                            AiTutorGateway.Result(
+                                success = false,
+                                message = directFailureMessage
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun requestOfflineOrUnavailable(requestId: String, question: String) {
+        if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+            requestOfflineTutor(requestId, question)
+        } else {
+            emitTutorResult(
+                requestId,
+                AiTutorGateway.Result(
+                    success = false,
+                    message = "You're offline and StudyLock could not load its local reference library."
+                )
+            )
+        }
     }
 
     private fun requestOfflineTutor(requestId: String, question: String) {
@@ -517,5 +548,9 @@ class StudyLockNativeBridge(
                 "${JSONObject.quote(result.text)}," +
                 "${JSONObject.quote(result.message)});"
         )
+    }
+
+    private companion object {
+        const val PRIVATE_AI_KEY_ASSET = "studylock-private-ai-key.txt"
     }
 }
