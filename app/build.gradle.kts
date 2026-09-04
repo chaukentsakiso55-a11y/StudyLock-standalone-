@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.0.7-mandatory-quiz-performance"
+        versionCode = 10
+        versionName = "1.0.8-weekly-blocklist-performance"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
