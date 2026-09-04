@@ -40,6 +40,7 @@ jobs:
           node --check app/src/main/assets/native-bridge.js
           node --check app/src/main/assets/studylock-enhancements.js
           node --check app/src/main/assets/studylock-app-picker.js
+          node --check app/src/main/assets/studylock-quiz-gate.js
       - name: Build and test
         run: |
           chmod +x gradlew
