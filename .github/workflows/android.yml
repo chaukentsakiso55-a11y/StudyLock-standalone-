@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      STUDYLOCK_FIREBASE_API_KEY: ${{ secrets.STUDYLOCK_FIREBASE_API_KEY }}
+      STUDYLOCK_FIREBASE_API_KEY: ${{ secrets.STAP_FIREBASE_API_KEY }}
       STUDYLOCK_FIREBASE_PROJECT_ID: studylock-family
       STUDYLOCK_FIREBASE_STORAGE_BUCKET: studylock-family.firebasestorage.app
     steps:
@@ -39,6 +39,7 @@ jobs:
         run: |
           node --check app/src/main/assets/native-bridge.js
           node --check app/src/main/assets/studylock-enhancements.js
+          node --check app/src/main/assets/studylock-app-picker.js
       - name: Build and test
         run: |
           chmod +x gradlew
