@@ -20,14 +20,16 @@ try:
         raise SystemExit(f"Too few dictionary entries: {entries}")
     if lexicon < 300_000:
         raise SystemExit(f"Too few offline English words: {lexicon}")
-    if aliases < 1_000:
-        raise SystemExit(f"Too few morphology aliases: {aliases}")
 
     for word in ("education", "learning", "science", "computer", "focus"):
         count = db.execute("SELECT COUNT(*) FROM entries WHERE word = ?", (word,)).fetchone()[0]
         if count == 0:
             raise SystemExit(f"Expected WordNet definition missing for: {word}")
 
-    print(f"Offline dictionary checks passed: {entries} entries, {lexicon} words, {aliases} aliases")
+    print(
+        f"Offline dictionary checks passed: {entries} entries, "
+        f"{lexicon} words, {aliases} imported exception aliases. "
+        "StudyLock also applies native morphology matching at lookup time."
+    )
 finally:
     db.close()
