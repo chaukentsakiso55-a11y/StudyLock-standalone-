@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.0.5-managed-ai-backend"
+        versionCode = 8
+        versionName = "1.0.6-app-picker-gemini-auth"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -37,7 +37,7 @@ android {
             "String",
             "FIREBASE_API_KEY",
             configValue(
-                "STUDYLOCK_FIREBASE_API_KEY",
+                "STUDYLOCK_FIRENAE_API_KEY",
                 "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
             ).asBuildConfigString()
         )
@@ -76,7 +76,7 @@ android {
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_18
     }
 
     buildFeatures {
