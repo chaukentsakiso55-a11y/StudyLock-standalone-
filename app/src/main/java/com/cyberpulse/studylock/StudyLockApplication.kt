@@ -21,12 +21,12 @@ import android.widget.Toast
 class StudyLockApplication : Application(), Application.ActivityLifecycleCallbacks {
     private val handler = Handler(Looper.getMainLooper())
 
-    private var promptShownThisProcess = false
-    private var setupRunning = false
     private var waitingForReturn = false
-    private var batteryAttempted = false
-    private var accessibilityAttempted = false
-    private var adminAttempted = false
+    private var currentStep: SetupStep? = null
+    private var activeDialog: AlertDialog? = null
+    private var dismissedThisProcess = false
+    private var promptScheduled = false
+    private var accessibilityAttempts = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -36,134 +36,197 @@ class StudyLockApplication : Application(), Application.ActivityLifecycleCallbac
     override fun onActivityResumed(activity: Activity) {
         if (activity !is MainActivity) return
 
-        if (setupRunning && waitingForReturn) {
+        if (isProtectionReady(activity)) {
+            markSetupComplete(activity, true)
+            activeDialog?.dismiss()
+            activeDialog = null
+            waitingForReturn = false
+            currentStep = null
+            return
+        }
+
+        markSetupComplete(activity, false)
+
+        if (waitingForReturn) {
             waitingForReturn = false
             handler.postDelayed({
                 if (!activity.isFinishing && !activity.isDestroyed) {
-                    advanceSetup(activity)
+                    handleReturnFromApproval(activity)
                 }
             }, RETURN_CHECK_DELAY_MS)
             return
         }
 
-        if (!promptShownThisProcess && !isProtectionReady(activity)) {
-            promptShownThisProcess = true
+        if (
+            !dismissedThisProcess &&
+            !promptScheduled &&
+            activeDialog?.isShowing != true
+        ) {
+            promptScheduled = true
             handler.postDelayed({
-                if (!activity.isFinishing && !activity.isDestroyed && !setupRunning) {
-                    showSetupOffer(activity)
+                promptScheduled = false
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    showNextPermission(activity)
                 }
             }, FIRST_PROMPT_DELAY_MS)
         }
     }
 
-    private fun showSetupOffer(activity: MainActivity) {
-        val missing = missingProtections(activity)
-        if (missing.isEmpty()) return
+    private fun handleReturnFromApproval(activity: MainActivity) {
+        val step = currentStep ?: firstMissingStep(activity)
+        if (step == null) {
+            finishSetup(activity)
+            return
+        }
 
-        AlertDialog.Builder(activity)
-            .setTitle("Set up StudyLock protection")
-            .setMessage(
-                "StudyLock can guide you through the Android approvals it needs for reliable focus sessions. " +
-                    "You will only need to approve the system screens that Android shows.\n\n" +
-                    "Setup covers:\n• Unrestricted battery access\n• App blocking (Accessibility)\n• Device administrator protection\n\n" +
-                    "Android does not allow StudyLock to approve these permissions for itself."
-            )
-            .setNegativeButton("Not now", null)
-            .setPositiveButton("Start setup") { _, _ ->
-                startSetup(activity)
+        if (isStepGranted(activity, step)) {
+            if (step == SetupStep.ACCESSIBILITY) accessibilityAttempts = 0
+            currentStep = null
+            showNextPermission(activity)
+            return
+        }
+
+        if (step == SetupStep.ACCESSIBILITY) {
+            accessibilityAttempts += 1
+            showAccessibilityHelp(activity)
+        } else {
+            showPermissionDialog(activity, step)
+        }
+    }
+
+    private fun showNextPermission(activity: MainActivity) {
+        val step = firstMissingStep(activity)
+        if (step == null) {
+            finishSetup(activity)
+            return
+        }
+        showPermissionDialog(activity, step)
+    }
+
+    private fun showPermissionDialog(activity: MainActivity, step: SetupStep) {
+        currentStep = step
+        activeDialog?.dismiss()
+
+        val title: String
+        val message: String
+        when (step) {
+            SetupStep.BATTERY -> {
+                title = "Allow unrestricted battery use"
+                message =
+                    "Allow StudyLock to keep focus sessions running reliably in the background. " +
+                        "Android will show its own confirmation screen."
             }
-            .show()
+            SetupStep.ACCESSIBILITY -> {
+                title = "Allow app blocking"
+                message =
+                    "Allow StudyLock app blocking. Android will open Accessibility so you can enable " +
+                        "‘StudyLock app blocking’."
+            }
+            SetupStep.ADMIN -> {
+                title = "Allow device administrator"
+                message =
+                    "Allow StudyLock device administrator protection. Android will show the official " +
+                        "activation screen before anything is enabled."
+            }
+        }
+
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("Allow") { _, _ ->
+                launchApproval(activity, step)
+            }
+            .create()
+
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnCancelListener {
+            dismissedThisProcess = true
+            activeDialog = null
+        }
+        dialog.setOnDismissListener {
+            if (activeDialog === dialog) activeDialog = null
+        }
+
+        activeDialog = dialog
+        dialog.show()
     }
 
-    fun startSetup(activity: MainActivity) {
-        if (setupRunning) return
-        setupRunning = true
-        waitingForReturn = false
-        batteryAttempted = false
-        accessibilityAttempted = false
-        adminAttempted = false
-        advanceSetup(activity)
+    private fun showAccessibilityHelp(activity: MainActivity) {
+        currentStep = SetupStep.ACCESSIBILITY
+        activeDialog?.dismiss()
+
+        val dialog = AlertDialog.Builder(activity)
+            .setTitle("Allow app blocking")
+            .setMessage(
+                "StudyLock still does not have app blocking access. Tap Allow to open Accessibility again.\n\n" +
+                    "If Android says this is a restricted setting because StudyLock was sideloaded, " +
+                    "open App info, use the menu and choose ‘Allow restricted settings’, then return here."
+            )
+            .setPositiveButton("Allow") { _, _ ->
+                launchApproval(activity, SetupStep.ACCESSIBILITY)
+            }
+            .setNeutralButton("Open App info") { _, _ ->
+                waitingForReturn = true
+                openAppInfo(activity)
+            }
+            .create()
+
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnCancelListener {
+            dismissedThisProcess = true
+            activeDialog = null
+        }
+        dialog.setOnDismissListener {
+            if (activeDialog === dialog) activeDialog = null
+        }
+
+        activeDialog = dialog
+        dialog.show()
     }
 
-    private fun advanceSetup(activity: MainActivity) {
-        if (!isBatteryUnrestricted(activity) && !batteryAttempted) {
-            batteryAttempted = true
-            waitingForReturn = true
-            launchBatteryApproval(activity)
-            return
-        }
+    private fun launchApproval(activity: MainActivity, step: SetupStep) {
+        currentStep = step
+        waitingForReturn = true
 
-        if (!isAccessibilityEnabled(activity) && !accessibilityAttempted) {
-            accessibilityAttempted = true
-            waitingForReturn = true
-            launchAccessibilityApproval(activity)
-            return
+        when (step) {
+            SetupStep.BATTERY -> launchBatteryApproval(activity)
+            SetupStep.ACCESSIBILITY -> launchAccessibilityApproval(activity)
+            SetupStep.ADMIN -> DeviceProtectionController.requestAdminActivation(activity)
         }
-
-        if (!isDeviceAdminActive(activity) && !adminAttempted) {
-            adminAttempted = true
-            waitingForReturn = true
-            DeviceProtectionController.requestAdminActivation(activity)
-            return
-        }
-
-        finishSetup(activity)
     }
 
     private fun finishSetup(activity: MainActivity) {
-        setupRunning = false
+        activeDialog?.dismiss()
+        activeDialog = null
         waitingForReturn = false
+        currentStep = null
+
+        if (!isProtectionReady(activity)) {
+            markSetupComplete(activity, false)
+            showNextPermission(activity)
+            return
+        }
+
+        markSetupComplete(activity, true)
+        dismissedThisProcess = false
 
         if (isDeviceAdminActive(activity) && ParentPasswordStore.hasPassword(activity)) {
             DeviceProtectionController.enable(activity.applicationContext)
         }
 
-        val missing = missingProtections(activity)
-        if (missing.isEmpty()) {
-            Toast.makeText(
-                activity,
-                "StudyLock protection setup is complete.",
-                Toast.LENGTH_LONG
-            ).show()
-            return
-        }
-
-        val accessibilityMissing = !isAccessibilityEnabled(activity)
-        val message = buildString {
-            append("Android still needs approval for: ")
-            append(missing.joinToString(", "))
-            append(".\n\n")
-            if (accessibilityMissing) {
-                append(
-                    "If Android says that StudyLock is a restricted setting, Android requires one manual step: " +
-                        "open StudyLock App info, use the menu, choose ‘Allow restricted settings’, then run setup again."
-                )
-            } else {
-                append("You can run the setup again to finish any permission you skipped.")
-            }
-        }
-
-        val dialog = AlertDialog.Builder(activity)
-            .setTitle("Protection setup needs one more approval")
-            .setMessage(message)
-            .setNegativeButton("Done for now", null)
-            .setPositiveButton("Try again") { _, _ ->
-                startSetup(activity)
-            }
-
-        if (accessibilityMissing) {
-            dialog.setNeutralButton("Open App info") { _, _ ->
-                openAppInfo(activity)
-            }
-        }
-
-        dialog.show()
+        Toast.makeText(
+            activity,
+            "StudyLock protection setup complete ✓",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun launchBatteryApproval(activity: MainActivity) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             waitingForReturn = false
-            advanceSetup(activity)
+            showNextPermission(activity)
             return
         }
 
@@ -181,7 +244,12 @@ class StudyLockApplication : Application(), Application.ActivityLifecycleCallbac
             }
         }.onFailure {
             waitingForReturn = false
-            advanceSetup(activity)
+            Toast.makeText(
+                activity,
+                "Android could not open battery access settings.",
+                Toast.LENGTH_LONG
+            ).show()
+            showPermissionDialog(activity, SetupStep.BATTERY)
         }
     }
 
@@ -196,7 +264,7 @@ class StudyLockApplication : Application(), Application.ActivityLifecycleCallbac
                 "Android could not open Accessibility settings.",
                 Toast.LENGTH_LONG
             ).show()
-            advanceSetup(activity)
+            showPermissionDialog(activity, SetupStep.ACCESSIBILITY)
         }
     }
 
@@ -208,17 +276,33 @@ class StudyLockApplication : Application(), Application.ActivityLifecycleCallbac
                     Uri.parse("package:${activity.packageName}")
                 )
             )
+        }.onFailure {
+            waitingForReturn = false
         }
     }
 
-    private fun missingProtections(context: Context): List<String> = buildList {
-        if (!isBatteryUnrestricted(context)) add("battery access")
-        if (!isAccessibilityEnabled(context)) add("app blocking")
-        if (!isDeviceAdminActive(context)) add("device administrator")
+    private fun firstMissingStep(context: Context): SetupStep? = when {
+        !isBatteryUnrestricted(context) -> SetupStep.BATTERY
+        !isAccessibilityEnabled(context) -> SetupStep.ACCESSIBILITY
+        !isDeviceAdminActive(context) -> SetupStep.ADMIN
+        else -> null
+    }
+
+    private fun isStepGranted(context: Context, step: SetupStep): Boolean = when (step) {
+        SetupStep.BATTERY -> isBatteryUnrestricted(context)
+        SetupStep.ACCESSIBILITY -> isAccessibilityEnabled(context)
+        SetupStep.ADMIN -> isDeviceAdminActive(context)
     }
 
     private fun isProtectionReady(context: Context): Boolean =
-        missingProtections(context).isEmpty()
+        firstMissingStep(context) == null
+
+    private fun markSetupComplete(context: Context, complete: Boolean) {
+        context.getSharedPreferences(SETUP_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SETUP_COMPLETE, complete)
+            .apply()
+    }
 
     private fun isBatteryUnrestricted(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
@@ -258,8 +342,16 @@ class StudyLockApplication : Application(), Application.ActivityLifecycleCallbac
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     override fun onActivityDestroyed(activity: Activity) = Unit
 
+    private enum class SetupStep {
+        BATTERY,
+        ACCESSIBILITY,
+        ADMIN
+    }
+
     companion object {
-        private const val FIRST_PROMPT_DELAY_MS = 700L
-        private const val RETURN_CHECK_DELAY_MS = 350L
+        private const val FIRST_PROMPT_DELAY_MS = 500L
+        private const val RETURN_CHECK_DELAY_MS = 300L
+        private const val SETUP_PREFS = "studylock_protection_setup"
+        private const val KEY_SETUP_COMPLETE = "setup_complete"
     }
 }
