@@ -52,6 +52,15 @@
     catch (_) { return false; }
   }
 
+  function refreshPersonalKeyLabel() {
+    try {
+      const key = localStorage.getItem('studylock_openrouter_api_key') || '';
+      if (!key.startsWith('AQ.')) return;
+      const status = document.getElementById('apiKeyStatusSub');
+      if (status) status.textContent = `Gemini auth key saved (•••• ${key.slice(-4)})`;
+    } catch (_) {}
+  }
+
   window.studyLockNativeAI = function requestNativeAI(body, overrideApiKey) {
     return new Promise((resolve, reject) => {
       const requestId = String(nextTutorRequestId++);
@@ -73,7 +82,7 @@
           apiKey,
           model,
           body,
-          preferPersonal: Boolean(overrideApiKey)
+          preferPersonal: Boolean(apiKey)
         }));
       } catch (error) {
         clearTimeout(timeout);
@@ -119,6 +128,10 @@
   document.getElementById('authGuestBtn')?.addEventListener('click', () => {
     if (firebaseEnabled()) native.continueAsGuest();
   }, true);
+
+  document.getElementById('saveApiKeyBtn')?.addEventListener('click', () => {
+    setTimeout(refreshPersonalKeyLabel, 120);
+  });
 
   function finishAuthentication(message, name, email) {
     try {
@@ -315,13 +328,14 @@
           console.info('StudyLock Firebase is not configured.');
         } else {
           document.documentElement.dataset.studylockManagedAi = 'connected';
-          if (!document.getElementById('studylockManagedAiStyle')) {
-            const style = document.createElement('style');
-            style.id = 'studylockManagedAiStyle';
-            style.textContent = '[data-studylock-managed-ai="connected"] #apiKeySection{display:none!important}';
-            document.head.appendChild(style);
+          const section = document.getElementById('apiKeySection');
+          const hint = section?.querySelector('.settings-hint');
+          if (section) section.style.display = 'block';
+          if (hint) {
+            hint.textContent = 'StudyLock AI is connected automatically. A personal Gemini or OpenRouter key is optional and, when saved, will be tried first.';
           }
         }
+        refreshPersonalKeyLabel();
         if (nativeState.focusActive && !nativeState.accessibilityEnabled) {
           showToast('Focus is active, but Android app blocking still needs Accessibility access.');
         }
@@ -331,5 +345,6 @@
 
   try { window.StudyLockNativeHooks.onNativeState(native.getNativeState()); }
   catch (_) {}
+  refreshPersonalKeyLabel();
   syncAll();
 })();

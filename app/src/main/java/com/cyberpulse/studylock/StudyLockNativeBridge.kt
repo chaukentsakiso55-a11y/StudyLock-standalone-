@@ -16,6 +16,7 @@ class StudyLockNativeBridge(
 ) {
     private val appContext: Context = activity.applicationContext
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
+    private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private var accessibilityPromptShown = false
 
     @JavascriptInterface
@@ -73,8 +74,27 @@ class StudyLockNativeBridge(
         DeviceProtectionController.status(appContext).toString()
 
     @JavascriptInterface
+    fun openAppPicker(existingEntriesJson: String) {
+        activity.runOnUiThread {
+            activity.openAppPicker(existingEntriesJson)
+        }
+    }
+
+    @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
-        aiTutorGateway.request(payload) { result -> emitTutorResult(requestId, result) }
+        val apiKey = runCatching {
+            JSONObject(payload).optString("apiKey").trim()
+        }.getOrDefault("")
+
+        if (apiKey.startsWith("AQ.")) {
+            geminiAuthTutorGateway.request(payload) { result ->
+                emitTutorResult(requestId, result)
+            }
+        } else {
+            aiTutorGateway.request(payload) { result ->
+                emitTutorResult(requestId, result)
+            }
+        }
     }
 
     @JavascriptInterface
@@ -195,6 +215,7 @@ class StudyLockNativeBridge(
 
     fun close() {
         aiTutorGateway.close()
+        geminiAuthTutorGateway.close()
     }
 
     private fun emitAuthResult(result: FirebaseGateway.AuthResult) {

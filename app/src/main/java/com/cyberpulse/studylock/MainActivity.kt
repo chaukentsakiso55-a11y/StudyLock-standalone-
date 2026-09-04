@@ -2,6 +2,7 @@ package com.cyberpulse.studylock
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -26,6 +27,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.webkit.WebViewAssetLoader
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
@@ -194,7 +196,12 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         val enhancementsScript = assets.open("studylock-enhancements.js")
             .bufferedReader()
             .use { it.readText() }
-        webView.evaluateJavascript("$bridgeScript\n$enhancementsScript") {
+        val appPickerScript = assets.open("studylock-app-picker.js")
+            .bufferedReader()
+            .use { it.readText() }
+        webView.evaluateJavascript(
+            "$bridgeScript\n$enhancementsScript\n$appPickerScript"
+        ) {
             bridgeAttached = true
             nativeBridge.emitNativeStatus()
         }
@@ -218,6 +225,85 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         }.onFailure {
             emitToast("Open Android Settings and enable StudyLock app blocking.")
         }
+    }
+
+    fun openAppPicker(existingEntriesJson: String) {
+        data class PickableApp(val label: String, val packageName: String)
+
+        val existing = runCatching {
+            val array = JSONArray(existingEntriesJson)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    val value = array.optString(index).trim().lowercase(Locale.ROOT)
+                    if (value.isNotEmpty()) add(value)
+                }
+            }
+        }.getOrDefault(emptySet())
+
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val activities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launcherIntent,
+                PackageManager.ResolveInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launcherIntent, 0)
+        }
+
+        val apps = activities.mapNotNull { info ->
+            val packageName = info.activityInfo?.packageName
+                ?.takeIf { it.isNotBlank() && it != this@MainActivity.packageName }
+                ?: return@mapNotNull null
+            val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                .ifBlank { packageName }
+            PickableApp(label, packageName)
+        }.distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase(Locale.ROOT) }
+
+        if (apps.isEmpty()) {
+            emitToast("No launchable apps were found on this device.")
+            return
+        }
+
+        val labels = apps.map { it.label }.toTypedArray()
+        val checked = BooleanArray(apps.size) { index ->
+            val app = apps[index]
+            val label = app.label.lowercase(Locale.ROOT)
+            val packageName = app.packageName.lowercase(Locale.ROOT)
+            existing.any { entry ->
+                entry == label ||
+                    entry == packageName ||
+                    entry.contains(packageName) ||
+                    entry.contains(label)
+            }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Select apps to block")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Add selected") { _, _ ->
+                val selected = JSONArray()
+                apps.forEachIndexed { index, app ->
+                    if (checked[index]) {
+                        selected.put(
+                            JSONObject()
+                                .put("name", app.label)
+                                .put("packageName", app.packageName)
+                        )
+                    }
+                }
+                runJavascript(
+                    "window.StudyLockNativeHooks?.onAppsPicked(" +
+                        "${JSONObject.quote(selected.toString())});"
+                )
+            }
+            .show()
     }
 
     fun requestNotificationPermissionIfNeeded() {

@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.0.5-managed-ai-backend"
+        versionCode = 8
+        versionName = "1.0.6-app-picker-gemini-auth"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
