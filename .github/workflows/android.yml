@@ -46,6 +46,7 @@ jobs:
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
           node scripts/check-fullscreen-performance.js
+          node scripts/check-version-109.js
       - name: Build and test
         run: |
           chmod +x gradlew
