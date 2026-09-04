@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.0.11-simple-allow-wizard"
+        versionCode = 14
+        versionName = "1.0.12-auto-ai-offline-dictionary"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -62,6 +62,7 @@ android {
                 "studylock-family.firebasestorage.app"
             ).asBuildConfigString()
         )
+        buildConfigField("int", "DICTIONARY_ASSET_VERSION", "1")
     }
 
     buildTypes {
