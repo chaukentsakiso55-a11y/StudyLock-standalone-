@@ -141,3 +141,12 @@
     lookupOfflineFirst(input.value);
   }, true);
 })();
+
+(() => {
+  if (window.__studyLockOfflineLibraryScriptRequested) return;
+  window.__studyLockOfflineLibraryScriptRequested = true;
+  const script = document.createElement('script');
+  script.src = 'https://appassets.androidplatform.net/assets/studylock-offline-library-ui.js';
+  script.async = true;
+  document.head.appendChild(script);
+})();
