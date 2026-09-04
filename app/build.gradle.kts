@@ -84,7 +84,7 @@ android {
     }
 
     packaging {
-        resources.excludes += "/META-INF/{AL2.0,LG2.1}"
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
 
@@ -101,7 +101,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
 
-    implementation(platform("com.google.firebase:firebase-bnh:34.18.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-functions")
