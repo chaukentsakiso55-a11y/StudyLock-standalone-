@@ -164,7 +164,7 @@ class GeminiAuthTutorGateway {
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val responseBody = stream?.bufferedReader(Charsets.UTF_NETWORK)?.use { it.readText() }.orEmpty()
+            val responseBody = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
             HttpResponse(code, responseBody)
         } catch (error: IOException) {
             throw IOException("Check your internet connection and try again.", error)
