@@ -61,7 +61,7 @@ class GeminiAuthTutorGateway {
         }
 
         val response = postJson(
-            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
             body = requestBody,
             headers = mapOf("x-goog-api-key" to apiKey)
         )
