@@ -73,6 +73,13 @@ class StudyLockNativeBridge(
         DeviceProtectionController.status(appContext).toString()
 
     @JavascriptInterface
+    fun openAppPicker(existingEntriesJson: String) {
+        activity.runOnUiThread {
+            activity.openAppPicker(existingEntriesJson)
+        }
+    }
+
+    @JavascriptInterface
     fun requestTutor(requestId: String, payload: String) {
         aiTutorGateway.request(payload) { result -> emitTutorResult(requestId, result) }
     }
