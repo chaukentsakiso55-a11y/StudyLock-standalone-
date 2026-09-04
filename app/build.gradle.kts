@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.0.10-first-run-protection-setup"
+        versionCode = 13
+        versionName = "1.0.11-simple-allow-wizard"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
