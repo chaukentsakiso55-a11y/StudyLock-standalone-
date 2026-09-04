@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -76,6 +77,8 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         nativeBridge = StudyLockNativeBridge(this, firebaseGateway)
         webView = WebView(this)
 
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)
         webView.setBackgroundColor(Color.rgb(7, 10, 18))
         webView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -99,6 +102,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             builtInZoomControls = false
             displayZoomControls = false
             setSupportZoom(false)
+            offscreenPreRaster = false
         }
 
         WebView.setWebContentsDebuggingEnabled(false)
@@ -199,6 +203,9 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         val enhancementsScript = assets.open("studylock-enhancements.js")
             .bufferedReader()
             .use { it.readText() }
+        val blockListPolicyScript = assets.open("studylock-blocklist-policy.js")
+            .bufferedReader()
+            .use { it.readText() }
         val appPickerScript = assets.open("studylock-app-picker.js")
             .bufferedReader()
             .use { it.readText() }
@@ -206,7 +213,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             .bufferedReader()
             .use { it.readText() }
         webView.evaluateJavascript(
-            "$bridgeScript\n$performanceScript\n$enhancementsScript\n$appPickerScript\n$quizGateScript"
+            "$bridgeScript\n$performanceScript\n$enhancementsScript\n$blockListPolicyScript\n$appPickerScript\n$quizGateScript"
         ) {
             bridgeAttached = true
             nativeBridge.emitNativeStatus()
