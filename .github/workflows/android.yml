@@ -46,7 +46,7 @@ jobs:
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
           node scripts/check-fullscreen-performance.js
-          node scripts/check-version-109.js
+          node scripts/check-version-110.js
           node scripts/check-no-fullscreen-regression.js
           node scripts/check-protection-onboarding.js
       - name: Build and test
