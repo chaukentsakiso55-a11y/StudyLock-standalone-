@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             setSupportZoom(false)
         }
 
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        WebView.setWebContentsDebuggingEnabled(false)
         webView.addJavascriptInterface(nativeBridge, "StudyLockNative")
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -193,6 +193,9 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         val bridgeScript = assets.open("native-bridge.js")
             .bufferedReader()
             .use { it.readText() }
+        val performanceScript = assets.open("studylock-performance.js")
+            .bufferedReader()
+            .use { it.readText() }
         val enhancementsScript = assets.open("studylock-enhancements.js")
             .bufferedReader()
             .use { it.readText() }
@@ -203,7 +206,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             .bufferedReader()
             .use { it.readText() }
         webView.evaluateJavascript(
-            "$bridgeScript\n$enhancementsScript\n$appPickerScript\n$quizGateScript"
+            "$bridgeScript\n$performanceScript\n$enhancementsScript\n$appPickerScript\n$quizGateScript"
         ) {
             bridgeAttached = true
             nativeBridge.emitNativeStatus()
