@@ -3,6 +3,8 @@ package com.cyberpulse.studylock
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings
 import android.view.WindowManager
@@ -12,6 +14,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageException
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -23,6 +27,7 @@ class StudyLockNativeBridge(
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
     private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private val offlineDictionaryGateway = OfflineDictionaryGateway(appContext)
+    private val offlineTutorReferenceGateway = OfflineTutorReferenceGateway(appContext)
     private var accessibilityPromptShown = false
     private var cachedBlockedEntries: Set<String> = emptySet()
     private var cachedBlockedPackages: Set<String> = emptySet()
@@ -138,16 +143,40 @@ class StudyLockNativeBridge(
     fun requestTutor(requestId: String, payload: String) {
         val request = runCatching { JSONObject(payload) }.getOrElse { JSONObject() }
         val apiKey = request.optString("apiKey").trim()
+        val question = latestTutorQuestion(request)
         val managedPayload = JSONObject(request.toString())
             .put("preferPersonal", false)
             .toString()
+
+        if (!isNetworkAvailable()) {
+            if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                requestOfflineTutor(requestId, question)
+            } else {
+                emitTutorResult(
+                    requestId,
+                    AiTutorGateway.Result(
+                        success = false,
+                        message = "You're offline. Open Settings and tap Download Library to install the Offline Tutor Library."
+                    )
+                )
+            }
+            return
+        }
 
         firebaseGateway.ensureTutorIdentity { authResult ->
             if (!authResult.success) {
                 if (apiKey.startsWith("AQ.")) {
                     geminiAuthTutorGateway.request(payload) { fallback ->
-                        emitTutorResult(requestId, fallback)
+                        if (fallback.success) {
+                            emitTutorResult(requestId, fallback)
+                        } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                            requestOfflineTutor(requestId, question)
+                        } else {
+                            emitTutorResult(requestId, fallback)
+                        }
                     }
+                } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                    requestOfflineTutor(requestId, question)
                 } else {
                     emitTutorResult(
                         requestId,
@@ -161,13 +190,23 @@ class StudyLockNativeBridge(
             }
 
             aiTutorGateway.request(managedPayload) { managedResult ->
-                if (!managedResult.success && apiKey.startsWith("AQ.")) {
+                if (managedResult.success) {
+                    emitTutorResult(requestId, managedResult)
+                    return@request
+                }
+
+                if (apiKey.startsWith("AQ.")) {
                     geminiAuthTutorGateway.request(payload) { fallback ->
-                        emitTutorResult(
-                            requestId,
-                            if (fallback.success) fallback else managedResult
-                        )
+                        if (fallback.success) {
+                            emitTutorResult(requestId, fallback)
+                        } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                            requestOfflineTutor(requestId, question)
+                        } else {
+                            emitTutorResult(requestId, managedResult)
+                        }
                     }
+                } else if (OfflineTutorLibraryStore.isInstalled(appContext)) {
+                    requestOfflineTutor(requestId, question)
                 } else {
                     emitTutorResult(requestId, managedResult)
                 }
@@ -186,6 +225,94 @@ class StudyLockNativeBridge(
                     "${JSONObject.quote(result.message)});"
             )
         }
+    }
+
+    @JavascriptInterface
+    fun getOfflineLibraryState(): String =
+        OfflineTutorLibraryStore.state(appContext).toString()
+
+    @JavascriptInterface
+    fun refreshOfflineLibraryMetadata() {
+        val app = firebaseGateway.firebaseApp
+        if (app == null) {
+            OfflineTutorLibraryStore.markUnavailable(
+                appContext,
+                "Firebase Storage is not configured for this StudyLock build."
+            )
+            emitOfflineLibraryState()
+            return
+        }
+
+        OfflineTutorLibraryStore.markChecking(appContext)
+        emitOfflineLibraryState()
+
+        firebaseGateway.ensureTutorIdentity { authResult ->
+            if (!authResult.success) {
+                OfflineTutorLibraryStore.markError(appContext, authResult.message)
+                emitOfflineLibraryState()
+                return@ensureTutorIdentity
+            }
+
+            FirebaseStorage.getInstance(app)
+                .reference
+                .child(BuildConfig.OFFLINE_LIBRARY_STORAGE_PATH)
+                .metadata
+                .addOnSuccessListener { metadata ->
+                    val version = metadata.getCustomMetadata("version")
+                        ?.toIntOrNull()
+                        ?: BuildConfig.OFFLINE_LIBRARY_VERSION
+                    OfflineTutorLibraryStore.markRemoteMetadata(
+                        appContext,
+                        metadata.sizeBytes,
+                        version,
+                        metadata.getCustomMetadata("sha256").orEmpty()
+                    )
+                    OfflineTutorLibraryStore.markReady(appContext)
+                    emitOfflineLibraryState()
+                }
+                .addOnFailureListener { error ->
+                    if (error is StorageException && error.errorCode == StorageException.ERROR_OBJECT_NOT_FOUND) {
+                        OfflineTutorLibraryStore.markUnavailable(
+                            appContext,
+                            "The Offline Tutor Library has not been published to StudyLock's download server yet.",
+                            published = false
+                        )
+                    } else {
+                        OfflineTutorLibraryStore.markError(
+                            appContext,
+                            error.localizedMessage?.take(180)
+                                ?: "StudyLock could not check the Offline Tutor Library download."
+                        )
+                    }
+                    emitOfflineLibraryState()
+                }
+        }
+    }
+
+    @JavascriptInterface
+    fun startOfflineLibraryDownload() {
+        val intent = Intent(appContext, OfflineLibraryDownloadService::class.java)
+            .setAction(OfflineLibraryDownloadService.ACTION_START)
+        ContextCompat.startForegroundService(appContext, intent)
+        activity.requestNotificationPermissionIfNeeded()
+    }
+
+    @JavascriptInterface
+    fun cancelOfflineLibraryDownload() {
+        appContext.startService(
+            Intent(appContext, OfflineLibraryDownloadService::class.java)
+                .setAction(OfflineLibraryDownloadService.ACTION_CANCEL)
+        )
+        emitOfflineLibraryState()
+    }
+
+    @JavascriptInterface
+    fun removeOfflineLibrary(): Boolean {
+        val status = OfflineTutorLibraryStore.state(appContext).optString("status")
+        if (status == "downloading" || status == "checking") return false
+        val removed = OfflineTutorLibraryStore.remove(appContext)
+        emitOfflineLibraryState()
+        return removed
     }
 
     @JavascriptInterface
@@ -307,6 +434,7 @@ class StudyLockNativeBridge(
             put("uninstallProtectionLevel", protection.optString("level", "off"))
             put("blockedListPolicy", BlockedListPolicyStore.state(appContext))
             put("offlineDictionary", true)
+            put("offlineTutorLibrary", OfflineTutorLibraryStore.state(appContext))
             put("androidVersion", Build.VERSION.SDK_INT)
         }.toString()
     }
@@ -317,12 +445,57 @@ class StudyLockNativeBridge(
             "window.StudyLockNativeHooks?.onNativeState(" +
                 "${JSONObject.quote(getNativeState())});"
         )
+        emitOfflineLibraryState()
     }
 
     fun close() {
         aiTutorGateway.close()
         geminiAuthTutorGateway.close()
         offlineDictionaryGateway.close()
+        offlineTutorReferenceGateway.close()
+    }
+
+    private fun requestOfflineTutor(requestId: String, question: String) {
+        offlineTutorReferenceGateway.answer(question) { result ->
+            emitTutorResult(
+                requestId,
+                AiTutorGateway.Result(
+                    success = result.success,
+                    text = result.text,
+                    message = result.message
+                )
+            )
+        }
+    }
+
+    private fun latestTutorQuestion(request: JSONObject): String {
+        val body = request.optJSONObject("body") ?: return ""
+        val messages = body.optJSONArray("messages")
+        if (messages != null) {
+            for (index in messages.length() - 1 downTo 0) {
+                val message = messages.optJSONObject(index) ?: continue
+                val role = message.optString("role").lowercase()
+                if (role != "user" && role != "student") continue
+                val text = message.opt("content")?.toString().orEmpty().trim()
+                if (text.isNotBlank()) return text.take(1_500)
+            }
+        }
+        return body.optString("prompt").trim().take(1_500)
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val manager = appContext.getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = manager.activeNetwork ?: return false
+        val capabilities = manager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    private fun emitOfflineLibraryState() {
+        activity.runJavascript(
+            "window.StudyLockNativeHooks?.onOfflineLibraryState(" +
+                "${JSONObject.quote(OfflineTutorLibraryStore.state(appContext).toString())});"
+        )
     }
 
     private fun emitAuthResult(result: FirebaseGateway.AuthResult) {
