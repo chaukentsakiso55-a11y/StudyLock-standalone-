@@ -48,7 +48,7 @@ class StudyLockNativeBridge(
 
     @JavascriptInterface
     fun saveParentPassword(password: String): Boolean =
-        ParentPasswordStore.save(appContext, verifyNotNull(password))
+        ParentPasswordStore.save(appContext, password)
 
     @JavascriptInterface
     fun verifyParentPassword(password: String): Boolean =
