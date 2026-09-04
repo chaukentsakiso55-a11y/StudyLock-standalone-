@@ -16,6 +16,7 @@ jobs:
       STUDYLOCK_FIREBASE_API_KEY: ${{ secrets.STUDYLOCK_FIREBASE_API_KEY }}
       STUDYLOCK_FIREBASE_PROJECT_ID: studylock-family
       STUDYLOCK_FIREBASE_STORAGE_BUCKET: studylock-family.firebasestorage.app
+      STUDYLOCK_OFFLINE_LIBRARY_STORAGE_PATH: offline-tutor-library/studylock-reference-library-v1.db
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -53,13 +54,15 @@ jobs:
           node --check app/src/main/assets/studylock-app-picker.js
           node --check app/src/main/assets/studylock-quiz-gate.js
           node --check app/src/main/assets/studylock-offline-dictionary.js
+          node --check app/src/main/assets/studylock-offline-library-ui.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
           node scripts/check-fullscreen-performance.js
-          node scripts/check-version-112.js
+          node scripts/check-version-113.js
           node scripts/check-no-fullscreen-regression.js
           node scripts/check-protection-onboarding.js
           node scripts/check-auto-ai-offline-dictionary.js
+          node scripts/check-downloadable-offline-library.js
       - name: Build and test
         run: |
           chmod +x gradlew

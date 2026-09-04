@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.0.12-auto-ai-offline-dictionary"
+        versionCode = 15
+        versionName = "1.0.13-downloadable-offline-library"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -63,6 +63,15 @@ android {
             ).asBuildConfigString()
         )
         buildConfigField("int", "DICTIONARY_ASSET_VERSION", "1")
+        buildConfigField(
+            "String",
+            "OFFLINE_LIBRARY_STORAGE_PATH",
+            configValue(
+                "STUDYLOCK_OFFLINE_LIBRARY_STORAGE_PATH",
+                "offline-tutor-library/studylock-reference-library-v1.db"
+            ).asBuildConfigString()
+        )
+        buildConfigField("int", "OFFLINE_LIBRARY_VERSION", "1")
     }
 
     buildTypes {
@@ -107,6 +116,7 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-functions")
     implementation("com.google.firebase:firebase-ai")
+    implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-appcheck-playintegrity")
     implementation("com.google.firebase:firebase-appcheck-debug")
 
