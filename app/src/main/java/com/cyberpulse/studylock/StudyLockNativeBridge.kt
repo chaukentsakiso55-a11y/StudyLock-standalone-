@@ -138,29 +138,39 @@ class StudyLockNativeBridge(
     fun requestTutor(requestId: String, payload: String) {
         val request = runCatching { JSONObject(payload) }.getOrElse { JSONObject() }
         val apiKey = request.optString("apiKey").trim()
-        val preferPersonal = request.optBoolean("preferPersonal", false)
-
-        if (preferPersonal && apiKey.startsWith("AQ.")) {
-            geminiAuthTutorGateway.request(payload) { result ->
-                emitTutorResult(requestId, result)
-            }
-            return
-        }
+        val managedPayload = JSONObject(request.toString())
+            .put("preferPersonal", false)
+            .toString()
 
         firebaseGateway.ensureTutorIdentity { authResult ->
             if (!authResult.success) {
-                emitTutorResult(
-                    requestId,
-                    AiTutorGateway.Result(
-                        success = false,
-                        message = authResult.message
+                if (apiKey.startsWith("AQ.")) {
+                    geminiAuthTutorGateway.request(payload) { fallback ->
+                        emitTutorResult(requestId, fallback)
+                    }
+                } else {
+                    emitTutorResult(
+                        requestId,
+                        AiTutorGateway.Result(
+                            success = false,
+                            message = authResult.message
+                        )
                     )
-                )
+                }
                 return@ensureTutorIdentity
             }
 
-            aiTutorGateway.request(payload) { result ->
-                emitTutorResult(requestId, result)
+            aiTutorGateway.request(managedPayload) { managedResult ->
+                if (!managedResult.success && apiKey.startsWith("AQ.")) {
+                    geminiAuthTutorGateway.request(payload) { fallback ->
+                        emitTutorResult(
+                            requestId,
+                            if (fallback.success) fallback else managedResult
+                        )
+                    }
+                } else {
+                    emitTutorResult(requestId, managedResult)
+                }
             }
         }
     }
