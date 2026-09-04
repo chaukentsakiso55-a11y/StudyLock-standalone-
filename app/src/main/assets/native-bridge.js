@@ -3,8 +3,9 @@
   window.__studyLockNativeBridgeAttached = true;
 
   const native = window.StudyLockNative;
-  const FOCUS_SYNC_INTERVAL_MS = 5000;
-  const CLOUD_SYNC_INTERVAL_MS = 15000;
+  const FOCUS_SYNC_INTERVAL_MS = 10000;
+  const CLOUD_SYNC_INTERVAL_MS = 30000;
+  const CLOUD_HEARTBEAT_MS = 60000;
   const cloudKeys = [
     'studylock_auth_user',
     'studylock_planner_tasks',
@@ -22,6 +23,7 @@
   let lastFocusStructural = '';
   let lastFocusSentAt = 0;
   let lastMusicPayload = '';
+  let blockedCache = [];
   let nextTutorRequestId = 1;
   const tutorRequests = new Map();
 
@@ -33,6 +35,7 @@
   const trackNameEl = document.getElementById('currentTrackName');
   const statTodayEl = document.getElementById('statToday');
   const statSessionsEl = document.getElementById('statSessions');
+  const streakEl = document.getElementById('streakCount');
 
   function showToast(message) {
     const toast = document.getElementById('toast');
@@ -169,18 +172,20 @@
       : 0;
   }
 
-  function blockedEntries() {
-    return Array.from(document.querySelectorAll('#siteList .site-name'))
+  function refreshBlockedCache() {
+    blockedCache = Array.from(document.querySelectorAll('#siteList .site-name'))
       .map(element => element.textContent?.trim())
       .filter(Boolean);
+    return blockedCache;
   }
 
   function focusSnapshot() {
-    const active = heroEl?.classList.contains('locked') || false;
-    const paused = (statusEl?.textContent || '').toLowerCase().includes('paused');
-    const remainingSeconds = parseTimer();
-    const blocked = blockedEntries();
-    return { active, paused, remainingSeconds, blocked };
+    return {
+      active: heroEl?.classList.contains('locked') || false,
+      paused: (statusEl?.textContent || '').toLowerCase().includes('paused'),
+      remainingSeconds: parseTimer(),
+      blocked: blockedCache.slice()
+    };
   }
 
   function syncFocus(force = false) {
@@ -214,7 +219,7 @@
     }
 
     if (!focusTimer) {
-      const delay = Math.max(250, FOCUS_SYNC_INTERVAL_MS - (now - lastFocusSentAt));
+      const delay = Math.max(500, FOCUS_SYNC_INTERVAL_MS - (now - lastFocusSentAt));
       focusTimer = setTimeout(() => {
         focusTimer = null;
         syncFocus(true);
@@ -247,10 +252,10 @@
       focusActive: heroEl?.classList.contains('locked') || false,
       focusPaused: (statusEl?.textContent || '').toLowerCase().includes('paused'),
       remainingSeconds: parseTimer(),
-      blockedEntries: blockedEntries(),
+      blockedEntries: blockedCache.slice(),
       todayMinutes: statTodayEl?.textContent || '0m',
       sessionsCompleted: Number(statSessionsEl?.textContent || 0),
-      streak: Number(document.getElementById('streakCount')?.textContent || 0),
+      streak: Number(streakEl?.textContent || 0),
       localState: safeStoredState(),
       clientUpdatedAt: new Date().toISOString()
     });
@@ -284,26 +289,30 @@
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(runBatchedSync);
     } else {
-      setTimeout(runBatchedSync, 16);
+      setTimeout(runBatchedSync, 32);
     }
   }
 
-  const observer = new MutationObserver(queueBatchedSync);
-  [heroEl, timerEl, statusEl, siteListEl, musicToggleEl, trackNameEl, statTodayEl, statSessionsEl]
-    .filter(Boolean)
-    .forEach(element => observer.observe(element, {
-      attributes: true,
-      childList: true,
-      characterData: true,
-      subtree: true
-    }));
+  const structuralObserver = new MutationObserver(queueBatchedSync);
+  if (heroEl) structuralObserver.observe(heroEl, { attributes: true, attributeFilter: ['class'] });
+  if (statusEl) structuralObserver.observe(statusEl, { childList: true, characterData: true, subtree: true });
+  if (musicToggleEl) structuralObserver.observe(musicToggleEl, { attributes: true, attributeFilter: ['class'] });
+  if (trackNameEl) structuralObserver.observe(trackNameEl, { childList: true, characterData: true, subtree: true });
+  if (statTodayEl) structuralObserver.observe(statTodayEl, { childList: true, characterData: true, subtree: true });
+  if (statSessionsEl) structuralObserver.observe(statSessionsEl, { childList: true, characterData: true, subtree: true });
+
+  const blockedListObserver = new MutationObserver(() => {
+    refreshBlockedCache();
+    queueBatchedSync();
+  });
+  if (siteListEl) blockedListObserver.observe(siteListEl, { childList: true });
 
   document.addEventListener('click', () => {
-    queueBatchedSync();
-    if (!cloudTimer) scheduleCloudSync(1200);
+    if (!cloudTimer) scheduleCloudSync(2000);
   }, { passive: true });
 
   document.addEventListener('studylock:blocklist-changed', () => {
+    refreshBlockedCache();
     syncFocus(true);
     scheduleCloudSync(500);
   });
@@ -313,6 +322,7 @@
       syncFocus(true);
       syncCloudNow();
     } else {
+      refreshBlockedCache();
       queueBatchedSync();
     }
   });
@@ -407,6 +417,7 @@
           }
         }
         refreshPersonalKeyLabel();
+        window.StudyLockBlockListPolicy?.refresh?.();
         if (nativeState.focusActive && !nativeState.accessibilityEnabled) {
           showToast('Focus is active, but Android app blocking still needs Accessibility access.');
         }
@@ -414,15 +425,35 @@
     }
   };
 
+  const focusHeartbeat = setInterval(() => {
+    if (heroEl?.classList.contains('locked')) syncFocus(false);
+  }, FOCUS_SYNC_INTERVAL_MS);
+
+  const cloudHeartbeat = setInterval(() => {
+    if (document.visibilityState === 'visible' && heroEl?.classList.contains('locked')) {
+      scheduleCloudSync(0);
+    }
+  }, CLOUD_HEARTBEAT_MS);
+
   window.StudyLockNativePerf = {
     flushFocus: () => syncFocus(true),
     flushCloud: syncCloudNow
   };
 
+  refreshBlockedCache();
   try { window.StudyLockNativeHooks.onNativeState(native.getNativeState()); }
   catch (_) {}
   refreshPersonalKeyLabel();
   syncFocus(true);
   syncMusic();
-  scheduleCloudSync(1200);
+  scheduleCloudSync(1500);
+
+  window.addEventListener('beforeunload', () => {
+    clearInterval(focusHeartbeat);
+    clearInterval(cloudHeartbeat);
+    clearTimeout(focusTimer);
+    clearTimeout(cloudTimer);
+    structuralObserver.disconnect();
+    blockedListObserver.disconnect();
+  }, { once: true });
 })();

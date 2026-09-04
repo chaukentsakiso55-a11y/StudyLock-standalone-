@@ -31,15 +31,15 @@ if (!main.includes('setWebContentsDebuggingEnabled(false)')) {
   throw new Error('WebView debugging is still enabled in the phone build.');
 }
 
-if (!bridge.includes('FOCUS_SYNC_INTERVAL_MS = 5000')) {
-  throw new Error('Focus-state throttling is not enabled.');
+if (!bridge.includes('FOCUS_SYNC_INTERVAL_MS = 10000')) {
+  throw new Error('The 1.0.8 focus-state heartbeat is not enabled.');
 }
 
-if (!bridge.includes('CLOUD_SYNC_INTERVAL_MS = 15000')) {
-  throw new Error('Cloud-state throttling is not enabled.');
+if (!bridge.includes('CLOUD_SYNC_INTERVAL_MS = 30000')) {
+  throw new Error('The 1.0.8 cloud-state throttling is not enabled.');
 }
 
-if (!performance.includes('backdrop-filter: blur(14px)') || !performance.includes('animation: none !important')) {
+if (!performance.includes('backdrop-filter: none') || !performance.includes('animation: none !important')) {
   throw new Error('The reduced-GPU Android style profile is incomplete.');
 }
 

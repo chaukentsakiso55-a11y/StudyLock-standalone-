@@ -74,6 +74,22 @@ class StudyLockNativeBridge(
         DeviceProtectionController.status(appContext).toString()
 
     @JavascriptInterface
+    fun getBlockedListPolicyState(): String =
+        BlockedListPolicyStore.state(appContext).toString()
+
+    @JavascriptInterface
+    fun canChangeBlockedList(): Boolean =
+        BlockedListPolicyStore.canEdit(appContext)
+
+    @JavascriptInterface
+    fun recordBlockedListChange(): String =
+        BlockedListPolicyStore.recordChange(appContext).toString()
+
+    @JavascriptInterface
+    fun authorizeBlockedListOverride(password: String): String =
+        BlockedListPolicyStore.authorizeParentOverride(appContext, password).toString()
+
+    @JavascriptInterface
     fun openAppPicker(existingEntriesJson: String) {
         activity.runOnUiThread {
             activity.openAppPicker(existingEntriesJson)
@@ -202,6 +218,7 @@ class StudyLockNativeBridge(
             put("uninstallBlocked", protection.optBoolean("uninstallBlocked"))
             put("uninstallProtectionDesired", protection.optBoolean("protectionDesired"))
             put("uninstallProtectionLevel", protection.optString("level", "off"))
+            put("blockedListPolicy", BlockedListPolicyStore.state(appContext))
             put("androidVersion", Build.VERSION.SDK_INT)
         }.toString()
     }
