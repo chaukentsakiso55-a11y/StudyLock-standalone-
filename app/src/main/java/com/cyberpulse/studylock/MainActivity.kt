@@ -16,6 +16,7 @@ import android.speech.SpeechRecognizer
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -30,6 +31,7 @@ import androidx.core.view.WindowCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.util.Locale
 
 class MainActivity : ComponentActivity(), RecognitionListener {
@@ -40,6 +42,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
     private var speechRecognizer: SpeechRecognizer? = null
     private var pendingSpeechTarget: String? = null
     private var bridgeAttached = false
+    private var bridgeAttachInProgress = false
 
     private val fileChooser = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -71,15 +74,18 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.rgb(7, 10, 18)
+        window.navigationBarColor = Color.TRANSPARENT
 
         firebaseGateway = FirebaseGateway(applicationContext)
         nativeBridge = StudyLockNativeBridge(this, firebaseGateway)
         webView = WebView(this)
 
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)
-        webView.setBackgroundColor(Color.rgb(7, 10, 18))
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        webView.setBackgroundColor(Color.WHITE)
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -102,6 +108,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             builtInZoomControls = false
             displayZoomControls = false
             setSupportZoom(false)
+            setSupportMultipleWindows(false)
             offscreenPreRaster = false
         }
 
@@ -111,7 +118,19 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest
-            ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
+            ): WebResourceResponse? {
+                assetLoader.shouldInterceptRequest(request.url)?.let { return it }
+
+                val host = request.url.host.orEmpty().lowercase(Locale.ROOT)
+                if (host == "fonts.googleapis.com" || host == "fonts.gstatic.com") {
+                    return WebResourceResponse(
+                        "text/plain",
+                        "UTF-8",
+                        ByteArrayInputStream(ByteArray(0))
+                    )
+                }
+                return null
+            }
 
             override fun shouldOverrideUrlLoading(
                 view: WebView?,
@@ -128,6 +147,22 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 attachNativeBridge()
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: RenderProcessGoneDetail?
+            ): Boolean {
+                if (view !== webView) return false
+
+                bridgeAttached = false
+                bridgeAttachInProgress = false
+                runCatching {
+                    webView.removeJavascriptInterface("StudyLockNative")
+                    webView.destroy()
+                }
+                runOnUiThread { recreate() }
+                return true
             }
         }
 
@@ -170,6 +205,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         }
 
         setContentView(webView)
+        nativeBridge.enterImmersiveFullscreen()
         webView.loadUrl(
             "https://appassets.androidplatform.net/assets/studylock-exact.html"
         )
@@ -190,34 +226,54 @@ class MainActivity : ComponentActivity(), RecognitionListener {
     override fun onResume() {
         super.onResume()
         DeviceProtectionController.applyDesiredPolicy(applicationContext)
+        nativeBridge.enterImmersiveFullscreen()
         if (bridgeAttached) nativeBridge.emitNativeStatus()
     }
 
-    private fun attachNativeBridge() {
-        val bridgeScript = assets.open("native-bridge.js")
-            .bufferedReader()
-            .use { it.readText() }
-        val performanceScript = assets.open("studylock-performance.js")
-            .bufferedReader()
-            .use { it.readText() }
-        val enhancementsScript = assets.open("studylock-enhancements.js")
-            .bufferedReader()
-            .use { it.readText() }
-        val blockListPolicyScript = assets.open("studylock-blocklist-policy.js")
-            .bufferedReader()
-            .use { it.readText() }
-        val appPickerScript = assets.open("studylock-app-picker.js")
-            .bufferedReader()
-            .use { it.readText() }
-        val quizGateScript = assets.open("studylock-quiz-gate.js")
-            .bufferedReader()
-            .use { it.readText() }
-        webView.evaluateJavascript(
-            "$bridgeScript\n$performanceScript\n$enhancementsScript\n$blockListPolicyScript\n$appPickerScript\n$quizGateScript"
-        ) {
-            bridgeAttached = true
-            nativeBridge.emitNativeStatus()
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && ::nativeBridge.isInitialized) {
+            nativeBridge.enterImmersiveFullscreen()
         }
+    }
+
+    private fun attachNativeBridge() {
+        if (bridgeAttached || bridgeAttachInProgress) return
+        bridgeAttachInProgress = true
+
+        val scriptNames = listOf(
+            "native-bridge.js",
+            "studylock-performance.js",
+            "studylock-enhancements.js",
+            "studylock-blocklist-policy.js",
+            "studylock-app-picker.js",
+            "studylock-quiz-gate.js"
+        )
+
+        fun evaluateNext(index: Int) {
+            if (index >= scriptNames.size) {
+                bridgeAttachInProgress = false
+                bridgeAttached = true
+                nativeBridge.emitNativeStatus()
+                return
+            }
+
+            val script = runCatching {
+                assets.open(scriptNames[index])
+                    .bufferedReader()
+                    .use { it.readText() }
+            }.getOrElse {
+                bridgeAttachInProgress = false
+                emitToast("StudyLock could not finish loading. Please reopen the app.")
+                return
+            }
+
+            webView.evaluateJavascript(script) {
+                webView.post { evaluateNext(index + 1) }
+            }
+        }
+
+        evaluateNext(0)
     }
 
     fun runJavascript(script: String) {
