@@ -27,7 +27,7 @@
   }
 
   function makeSeamless(samples, sampleRate) {
-    const crossfade = Math.min(Math.floor(sampleRate * 0.6), Math.floor(samples.length / 5));
+    const crossfade = Math.min(Math.floor(sampleRate * 0.4), Math.floor(samples.length / 6));
     if (crossfade <= 1) return;
     const start = samples.slice(0, crossfade);
     const endStart = samples.length - crossfade;
@@ -65,8 +65,8 @@
   }
 
   function makeFocusSoundscape(kind, seed) {
-    const sampleRate = 12000;
-    const duration = 16;
+    const sampleRate = 8000;
+    const duration = 8;
     const length = sampleRate * duration;
     const samples = new Float32Array(length);
     const random = seededRandom(seed);
@@ -82,33 +82,28 @@
       if (kind === 'deep') {
         brown = clamp(brown + white * 0.018, -1, 1) * 0.995;
         const pad =
-          Math.sin(2 * Math.PI * 110 * t) * 0.026 +
-          Math.sin(2 * Math.PI * 165 * t) * 0.018 +
-          Math.sin(2 * Math.PI * 220 * t) * 0.012;
-        samples[i] = brown * 0.16 + pad;
+          Math.sin(2 * Math.PI * 110 * t) * 0.025 +
+          Math.sin(2 * Math.PI * 165 * t) * 0.016 +
+          Math.sin(2 * Math.PI * 220 * t) * 0.010;
+        samples[i] = brown * 0.15 + pad;
       } else if (kind === 'reading') {
         pinkA = 0.997 * pinkA + white * 0.029;
         pinkB = 0.985 * pinkB + white * 0.055;
-        const bed = (pinkA + pinkB + white * 0.06) * 0.12;
-        const pad =
-          Math.sin(2 * Math.PI * 98 * t) * 0.016 +
-          Math.sin(2 * Math.PI * 196 * t) * 0.012;
-        samples[i] = bed + pad;
+        samples[i] = (pinkA + pinkB + white * 0.06) * 0.11 +
+          Math.sin(2 * Math.PI * 98 * t) * 0.013;
       } else if (kind === 'calm') {
         const breathe = 0.65 + 0.35 * Math.sin(2 * Math.PI * 0.06 * t);
         const pad =
-          Math.sin(2 * Math.PI * 131 * t) * 0.028 +
-          Math.sin(2 * Math.PI * 196 * t) * 0.020 +
-          Math.sin(2 * Math.PI * 262 * t) * 0.012;
+          Math.sin(2 * Math.PI * 131 * t) * 0.025 +
+          Math.sin(2 * Math.PI * 196 * t) * 0.017 +
+          Math.sin(2 * Math.PI * 262 * t) * 0.009;
         brown = clamp(brown + white * 0.012, -1, 1) * 0.996;
-        samples[i] = pad * breathe + brown * 0.045;
+        samples[i] = pad * breathe + brown * 0.04;
       } else {
         rainSmooth = rainSmooth * 0.72 + white * 0.28;
         const hiss = white - rainSmooth;
         const slow = 0.75 + 0.25 * Math.sin(2 * Math.PI * 0.11 * t);
-        let rain = (hiss * 0.10 + rainSmooth * 0.055) * slow;
-        if (random() > 0.9993) rain += (random() * 2 - 1) * 0.12;
-        samples[i] = rain;
+        samples[i] = (hiss * 0.09 + rainSmooth * 0.05) * slow;
       }
     }
 
@@ -121,13 +116,41 @@
   function installFocusSoundscapes() {
     try {
       if (typeof MUSIC_TRACKS === 'undefined' || !Array.isArray(MUSIC_TRACKS)) return;
+
       const replacements = [
-        { name: 'Deep Focus', url: makeFocusSoundscape('deep', 1103) },
-        { name: 'Reading Flow', url: makeFocusSoundscape('reading', 2207) },
-        { name: 'Calm Concentration', url: makeFocusSoundscape('calm', 3319) },
-        { name: 'Soft Rain Focus', url: makeFocusSoundscape('rain', 4421) }
+        { name: 'Deep Focus', url: '', __kind: 'deep', __seed: 1103 },
+        { name: 'Reading Flow', url: '', __kind: 'reading', __seed: 2207 },
+        { name: 'Calm Concentration', url: '', __kind: 'calm', __seed: 3319 },
+        { name: 'Soft Rain Focus', url: '', __kind: 'rain', __seed: 4421 }
       ];
       MUSIC_TRACKS.splice(0, 4, ...replacements);
+
+      if (typeof playMusic === 'function' && !window.__studyLockLazyMusicWrapped) {
+        window.__studyLockLazyMusicWrapped = true;
+        const originalPlayMusic = playMusic;
+        playMusic = function studyLockLazyPlayMusic() {
+          const track = MUSIC_TRACKS[currentTrackIndex];
+          if (!track?.__kind || track.url) {
+            originalPlayMusic();
+            return;
+          }
+
+          if (track.__preparing) return;
+          track.__preparing = true;
+          showToast('Preparing focus audio…');
+          setTimeout(() => {
+            try {
+              track.url = makeFocusSoundscape(track.__kind, track.__seed);
+              track.__preparing = false;
+              originalPlayMusic();
+            } catch (error) {
+              track.__preparing = false;
+              console.warn('Could not prepare focus audio.', error);
+              showToast('Focus audio could not start. Try another track.');
+            }
+          }, 20);
+        };
+      }
 
       try {
         if (localStorage.getItem('studylock_music_volume') === null) {
@@ -140,7 +163,7 @@
       if (title) title.textContent = replacements[0].name;
       const musicSection = title?.closest('.settings-section');
       const subtitle = musicSection?.querySelector('.settings-row-sub');
-      if (subtitle) subtitle.textContent = 'Offline focus soundscapes · no lyrics · no internet';
+      if (subtitle) subtitle.textContent = 'Focus soundscapes · generated only when played';
       const slider = document.getElementById('musicVolumeSlider');
       const volumeValue = document.getElementById('musicVolumeValue');
       if (slider && localStorage.getItem('studylock_music_volume') === '0.30') slider.value = '30';
@@ -207,7 +230,7 @@
         if (result.state) renderProtection(result.state);
         if (result.success) section.querySelector('#uninstallProtectionPassword').value = '';
         showToast(result.message || (result.success ? 'Protection released.' : 'Could not release protection.'));
-      } catch (error) {
+      } catch (_) {
         showToast('StudyLock could not change uninstall protection.');
       }
     });

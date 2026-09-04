@@ -3,6 +3,8 @@
   window.__studyLockNativeBridgeAttached = true;
 
   const native = window.StudyLockNative;
+  const FOCUS_SYNC_INTERVAL_MS = 5000;
+  const CLOUD_SYNC_INTERVAL_MS = 15000;
   const cloudKeys = [
     'studylock_auth_user',
     'studylock_planner_tasks',
@@ -11,12 +13,26 @@
     'studylock_music_volume',
     'studylock_music_playing'
   ];
-  let syncTimer = null;
+
+  let cloudTimer = null;
+  let focusTimer = null;
+  let animationQueued = false;
   let lastCloudPayload = '';
   let lastFocusPayload = '';
+  let lastFocusStructural = '';
+  let lastFocusSentAt = 0;
   let lastMusicPayload = '';
   let nextTutorRequestId = 1;
   const tutorRequests = new Map();
+
+  const heroEl = document.getElementById('hero');
+  const timerEl = document.getElementById('timerDisplay');
+  const statusEl = document.getElementById('statusLabel');
+  const siteListEl = document.getElementById('siteList');
+  const musicToggleEl = document.getElementById('musicToggleBtn');
+  const trackNameEl = document.getElementById('currentTrackName');
+  const statTodayEl = document.getElementById('statToday');
+  const statSessionsEl = document.getElementById('statSessions');
 
   function showToast(message) {
     const toast = document.getElementById('toast');
@@ -142,11 +158,11 @@
     } catch (_) {}
     document.getElementById('authOverlay')?.classList.remove('show');
     showToast(message);
-    scheduleCloudSync();
+    scheduleCloudSync(500);
   }
 
   function parseTimer() {
-    const value = document.getElementById('timerDisplay')?.textContent?.trim() || '00:00';
+    const value = timerEl?.textContent?.trim() || '00:00';
     const parts = value.split(':').map(Number);
     return parts.length === 2 && parts.every(Number.isFinite)
       ? parts[0] * 60 + parts[1]
@@ -159,22 +175,56 @@
       .filter(Boolean);
   }
 
-  function syncFocus() {
-    const active = document.getElementById('hero')?.classList.contains('locked') || false;
-    const paused = (document.getElementById('statusLabel')?.textContent || '')
-      .toLowerCase()
-      .includes('paused');
+  function focusSnapshot() {
+    const active = heroEl?.classList.contains('locked') || false;
+    const paused = (statusEl?.textContent || '').toLowerCase().includes('paused');
     const remainingSeconds = parseTimer();
     const blocked = blockedEntries();
-    const payload = JSON.stringify({ active, paused, remainingSeconds, blocked });
-    if (payload === lastFocusPayload) return;
+    return { active, paused, remainingSeconds, blocked };
+  }
+
+  function syncFocus(force = false) {
+    const snapshot = focusSnapshot();
+    const payload = JSON.stringify(snapshot);
+    if (!force && payload === lastFocusPayload) return;
+
+    const structural = JSON.stringify({
+      active: snapshot.active,
+      paused: snapshot.paused,
+      blocked: snapshot.blocked
+    });
+    const now = Date.now();
+    const structuralChanged = structural !== lastFocusStructural;
+    const due = now - lastFocusSentAt >= FOCUS_SYNC_INTERVAL_MS;
+    const urgent = structuralChanged || snapshot.remainingSeconds === 0 || !snapshot.active;
+
     lastFocusPayload = payload;
-    native.onFocusState(active, paused, remainingSeconds, JSON.stringify(blocked));
+    if (force || urgent || due) {
+      clearTimeout(focusTimer);
+      focusTimer = null;
+      lastFocusStructural = structural;
+      lastFocusSentAt = now;
+      native.onFocusState(
+        snapshot.active,
+        snapshot.paused,
+        snapshot.remainingSeconds,
+        JSON.stringify(snapshot.blocked)
+      );
+      return;
+    }
+
+    if (!focusTimer) {
+      const delay = Math.max(250, FOCUS_SYNC_INTERVAL_MS - (now - lastFocusSentAt));
+      focusTimer = setTimeout(() => {
+        focusTimer = null;
+        syncFocus(true);
+      }, delay);
+    }
   }
 
   function syncMusic() {
-    const playing = document.getElementById('musicToggleBtn')?.classList.contains('playing') || false;
-    const trackName = document.getElementById('currentTrackName')?.textContent?.trim() || '';
+    const playing = musicToggleEl?.classList.contains('playing') || false;
+    const trackName = trackNameEl?.textContent?.trim() || '';
     const payload = JSON.stringify({ playing, trackName });
     if (payload === lastMusicPayload) return;
     lastMusicPayload = payload;
@@ -194,12 +244,12 @@
 
   function cloudPayload() {
     return JSON.stringify({
-      focusActive: document.getElementById('hero')?.classList.contains('locked') || false,
-      focusPaused: (document.getElementById('statusLabel')?.textContent || '').toLowerCase().includes('paused'),
+      focusActive: heroEl?.classList.contains('locked') || false,
+      focusPaused: (statusEl?.textContent || '').toLowerCase().includes('paused'),
       remainingSeconds: parseTimer(),
       blockedEntries: blockedEntries(),
-      todayMinutes: document.getElementById('statToday')?.textContent || '0m',
-      sessionsCompleted: Number(document.getElementById('statSessions')?.textContent || 0),
+      todayMinutes: statTodayEl?.textContent || '0m',
+      sessionsCompleted: Number(statSessionsEl?.textContent || 0),
       streak: Number(document.getElementById('streakCount')?.textContent || 0),
       localState: safeStoredState(),
       clientUpdatedAt: new Date().toISOString()
@@ -207,7 +257,8 @@
   }
 
   function syncCloudNow() {
-    syncTimer = null;
+    clearTimeout(cloudTimer);
+    cloudTimer = null;
     const payload = cloudPayload();
     const stablePayload = payload.replace(/"clientUpdatedAt":"[^"]+"/, '"clientUpdatedAt":""');
     if (stablePayload === lastCloudPayload) return;
@@ -215,40 +266,55 @@
     native.syncState(payload);
   }
 
-  function scheduleCloudSync() {
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(syncCloudNow, 1200);
+  function scheduleCloudSync(delay = CLOUD_SYNC_INTERVAL_MS) {
+    if (cloudTimer) return;
+    cloudTimer = setTimeout(syncCloudNow, delay);
   }
 
-  function syncAll() {
-    syncFocus();
+  function runBatchedSync() {
+    animationQueued = false;
+    syncFocus(false);
     syncMusic();
     scheduleCloudSync();
   }
 
-  const observed = [
-    document.getElementById('hero'),
-    document.getElementById('timerDisplay'),
-    document.getElementById('statusLabel'),
-    document.getElementById('siteList'),
-    document.getElementById('musicToggleBtn'),
-    document.getElementById('currentTrackName'),
-    document.getElementById('statToday'),
-    document.getElementById('statSessions')
-  ].filter(Boolean);
+  function queueBatchedSync() {
+    if (animationQueued) return;
+    animationQueued = true;
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(runBatchedSync);
+    } else {
+      setTimeout(runBatchedSync, 16);
+    }
+  }
 
-  const observer = new MutationObserver(syncAll);
-  observed.forEach(element => observer.observe(element, {
-    attributes: true,
-    childList: true,
-    characterData: true,
-    subtree: true
-  }));
+  const observer = new MutationObserver(queueBatchedSync);
+  [heroEl, timerEl, statusEl, siteListEl, musicToggleEl, trackNameEl, statTodayEl, statSessionsEl]
+    .filter(Boolean)
+    .forEach(element => observer.observe(element, {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true
+    }));
 
-  document.addEventListener('click', () => setTimeout(syncAll, 180), false);
+  document.addEventListener('click', () => {
+    queueBatchedSync();
+    if (!cloudTimer) scheduleCloudSync(1200);
+  }, { passive: true });
+
+  document.addEventListener('studylock:blocklist-changed', () => {
+    syncFocus(true);
+    scheduleCloudSync(500);
+  });
+
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') syncCloudNow();
-    else syncAll();
+    if (document.visibilityState === 'hidden') {
+      syncFocus(true);
+      syncCloudNow();
+    } else {
+      queueBatchedSync();
+    }
   });
 
   function wireNativeMicrophone(id, target) {
@@ -273,7 +339,12 @@
       state.totalSeconds = Math.max(Number(state.totalSeconds) || 0, remaining);
       if (typeof updateLockVisuals === 'function') updateLockVisuals();
       if (typeof render === 'function') render();
-      if (typeof tickHandle !== 'undefined' && !tickHandle && remaining > 0 && typeof tick === 'function') {
+      if (
+        typeof tickHandle !== 'undefined' &&
+        !tickHandle &&
+        remaining > 0 &&
+        typeof tick === 'function'
+      ) {
         tickHandle = setInterval(tick, 1000);
       }
     } catch (error) {
@@ -343,8 +414,15 @@
     }
   };
 
+  window.StudyLockNativePerf = {
+    flushFocus: () => syncFocus(true),
+    flushCloud: syncCloudNow
+  };
+
   try { window.StudyLockNativeHooks.onNativeState(native.getNativeState()); }
   catch (_) {}
   refreshPersonalKeyLabel();
-  syncAll();
+  syncFocus(true);
+  syncMusic();
+  scheduleCloudSync(1200);
 })();
