@@ -27,6 +27,12 @@
       showToast('End the current focus session before changing blocked apps.');
       return;
     }
+    if (
+      window.StudyLockBlockListPolicy &&
+      !window.StudyLockBlockListPolicy.canEditNow(true)
+    ) {
+      return;
+    }
     try {
       native.openAppPicker(JSON.stringify(currentBlockedNames()));
     } catch (_) {
@@ -61,9 +67,18 @@
         makePickerButton('settingsSelectInstalledAppsBtn', true)
       );
     }
+
+    window.StudyLockBlockListPolicy?.refresh?.();
   }
 
   function applyPickedApps(raw) {
+    if (
+      window.StudyLockBlockListPolicy &&
+      !window.StudyLockBlockListPolicy.canEditNow(true)
+    ) {
+      return;
+    }
+
     let picked;
     try {
       picked = JSON.parse(raw);
@@ -92,6 +107,7 @@
       if (existing.has(key)) return;
       blockedSites.push({
         name,
+        packageName: item?.packageName?.toString().trim() || '',
         icon: typeof iconFor === 'function'
           ? iconFor(name)
           : name.replace(/[^a-zA-Z]/g, '').slice(0, 2).toUpperCase() || 'AP'
@@ -104,6 +120,7 @@
       if (typeof saveBlockedSites === 'function') saveBlockedSites();
       if (typeof renderSites === 'function') renderSites();
       if (typeof renderSettingsSiteList === 'function') renderSettingsSiteList();
+      window.StudyLockBlockListPolicy?.recordChange?.();
       document.dispatchEvent(new Event('studylock:blocklist-changed'));
       showToast(`${added} app${added === 1 ? '' : 's'} added to the block list.`);
     } else {
