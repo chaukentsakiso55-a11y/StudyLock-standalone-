@@ -45,6 +45,9 @@ jobs:
           node --check app/src/main/assets/studylock-quiz-gate.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
+          node scripts/check-fullscreen-performance.js
+          node scripts/check-version-109.js
+          node scripts/check-no-fullscreen-regression.js
       - name: Build and test
         run: |
           chmod +x gradlew

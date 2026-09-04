@@ -2,11 +2,16 @@ package com.cyberpulse.studylock
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.provider.Settings
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityManager
 import android.webkit.JavascriptInterface
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -18,9 +23,41 @@ class StudyLockNativeBridge(
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
     private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private var accessibilityPromptShown = false
+    private var cachedBlockedEntries: Set<String> = emptySet()
+    private var cachedBlockedPackages: Set<String> = emptySet()
 
     @JavascriptInterface
     fun isFirebaseConfigured(): Boolean = firebaseGateway.isConfigured
+
+    @JavascriptInterface
+    fun enterImmersiveFullscreen() {
+        activity.runOnUiThread {
+            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+            activity.window.statusBarColor = Color.TRANSPARENT
+            activity.window.navigationBarColor = Color.TRANSPARENT
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val attributes = activity.window.attributes
+                attributes.layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                activity.window.attributes = attributes
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                activity.window.isNavigationBarContrastEnforced = false
+                activity.window.isStatusBarContrastEnforced = false
+            }
+
+            WindowInsetsControllerCompat(
+                activity.window,
+                activity.window.decorView
+            ).apply {
+                systemBarsBehavior =
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     @JavascriptInterface
     fun signUp(name: String, email: String, password: String) {
@@ -130,17 +167,27 @@ class StudyLockNativeBridge(
             }
         }.getOrDefault(emptyList())
 
+        val entrySet = entries.toSet()
+        val resolvedPackages = if (entrySet == cachedBlockedEntries) {
+            cachedBlockedPackages
+        } else {
+            BlockedAppResolver.resolve(appContext, entries).also { resolved ->
+                cachedBlockedEntries = entrySet
+                cachedBlockedPackages = resolved
+            }
+        }
+
         val wasActive = FocusStateStore.isActive(appContext)
         FocusStateStore.update(
             context = appContext,
             active = active,
             paused = paused,
             remainingSeconds = remainingSeconds.coerceAtLeast(0),
-            blockedPackages = BlockedAppResolver.resolve(appContext, entries),
-            blockedEntries = entries.toSet()
+            blockedPackages = resolvedPackages,
+            blockedEntries = entrySet
         )
 
-        if (active) {
+        if (active && !wasActive) {
             DeviceProtectionController.applyDesiredPolicy(appContext)
         }
 
@@ -224,6 +271,7 @@ class StudyLockNativeBridge(
     }
 
     fun emitNativeStatus() {
+        enterImmersiveFullscreen()
         activity.runJavascript(
             "window.StudyLockNativeHooks?.onNativeState(" +
                 "${JSONObject.quote(getNativeState())});"

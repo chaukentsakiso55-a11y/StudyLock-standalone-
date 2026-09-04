@@ -1,6 +1,7 @@
 package com.cyberpulse.studylock
 
 import android.content.Context
+import kotlin.math.abs
 
 object FocusStateStore {
     private const val PREFERENCES = "studylock_native_focus"
@@ -10,6 +11,7 @@ object FocusStateStore {
     private const val END_EPOCH_MILLIS = "end_epoch_millis"
     private const val BLOCKED_PACKAGES = "blocked_packages"
     private const val BLOCKED_ENTRIES = "blocked_entries"
+    private const val END_TIME_DRIFT_TOLERANCE_MS = 2_500L
 
     fun update(
         context: Context,
@@ -19,19 +21,44 @@ object FocusStateStore {
         blockedPackages: Set<String>,
         blockedEntries: Set<String>
     ) {
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .edit()
+        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val safeRemaining = remainingSeconds.coerceAtLeast(0)
+        val targetEnd = if (active && !paused) {
+            System.currentTimeMillis() + safeRemaining * 1_000L
+        } else {
+            0L
+        }
+
+        val sameActive = preferences.getBoolean(ACTIVE, false) == active
+        val samePaused = preferences.getBoolean(PAUSED, false) == paused
+        val samePackages = preferences.getStringSet(BLOCKED_PACKAGES, emptySet())
+            ?.toSet().orEmpty() == blockedPackages
+        val sameEntries = preferences.getStringSet(BLOCKED_ENTRIES, emptySet())
+            ?.toSet().orEmpty() == blockedEntries
+        val existingRemaining = preferences.getInt(REMAINING_SECONDS, 0)
+        val existingEnd = preferences.getLong(END_EPOCH_MILLIS, 0L)
+
+        val timerStateAlreadyPersisted = when {
+            !active -> sameActive && samePaused
+            paused -> existingRemaining == safeRemaining
+            else -> abs(existingEnd - targetEnd) <= END_TIME_DRIFT_TOLERANCE_MS
+        }
+
+        if (
+            sameActive &&
+            samePaused &&
+            samePackages &&
+            sameEntries &&
+            timerStateAlreadyPersisted
+        ) {
+            return
+        }
+
+        preferences.edit()
             .putBoolean(ACTIVE, active)
             .putBoolean(PAUSED, paused)
-            .putInt(REMAINING_SECONDS, remainingSeconds)
-            .putLong(
-                END_EPOCH_MILLIS,
-                if (active && !paused) {
-                    System.currentTimeMillis() + remainingSeconds * 1_000L
-                } else {
-                    0L
-                }
-            )
+            .putInt(REMAINING_SECONDS, safeRemaining)
+            .putLong(END_EPOCH_MILLIS, targetEnd)
             .putStringSet(BLOCKED_PACKAGES, blockedPackages)
             .putStringSet(BLOCKED_ENTRIES, blockedEntries)
             .apply()

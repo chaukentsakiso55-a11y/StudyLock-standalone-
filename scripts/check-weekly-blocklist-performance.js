@@ -45,7 +45,7 @@ if (bridgeJs.includes('structuralObserver.observe(timerEl')) {
 if (!performanceJs.includes('backdrop-filter: none')) {
   throw new Error('Android performance profile still uses expensive live backdrop blur.');
 }
-if (!mainKt.includes('setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)')) {
+if (!mainKt.includes('setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)')) {
   throw new Error('WebView renderer priority protection is missing.');
 }
 

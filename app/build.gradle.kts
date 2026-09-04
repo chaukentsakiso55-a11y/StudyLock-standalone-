@@ -28,8 +28,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.0.8-weekly-blocklist-performance"
+        versionCode = 11
+        versionName = "1.0.9-fullscreen-ultra-performance"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
