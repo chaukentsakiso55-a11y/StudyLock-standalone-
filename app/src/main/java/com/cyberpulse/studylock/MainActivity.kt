@@ -247,7 +247,8 @@ class MainActivity : ComponentActivity(), RecognitionListener {
             "studylock-enhancements.js",
             "studylock-blocklist-policy.js",
             "studylock-app-picker.js",
-            "studylock-quiz-gate.js"
+            "studylock-quiz-gate.js",
+            "studylock-offline-dictionary.js"
         )
 
         fun evaluateNext(index: Int) {
