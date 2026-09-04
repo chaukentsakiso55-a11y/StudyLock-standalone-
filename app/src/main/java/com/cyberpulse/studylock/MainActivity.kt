@@ -196,7 +196,12 @@ class MainActivity : ComponentActivity(), RecognitionListener {
         val enhancementsScript = assets.open("studylock-enhancements.js")
             .bufferedReader()
             .use { it.readText() }
-        webView.evaluateJavascript("$bridgeScript\n$enhancementsScript") {
+        val appPickerScript = assets.open("studylock-app-picker.js")
+            .bufferedReader()
+            .use { it.readText() }
+        webView.evaluateJavascript(
+            "$bridgeScript\n$enhancementsScript\n$appPickerScript"
+        ) {
             bridgeAttached = true
             nativeBridge.emitNativeStatus()
         }
@@ -256,7 +261,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
                 .ifBlank { packageName }
             PickableApp(label, packageName)
         }.distinctBy { it.packageName }
-            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
+            .sortedBy { it.label.lowercase(Locale.ROOT) }
 
         if (apps.isEmpty()) {
             emitToast("No launchable apps were found on this device.")
