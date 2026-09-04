@@ -23,6 +23,8 @@ class StudyLockNativeBridge(
     private val aiTutorGateway = AiTutorGateway(firebaseGateway.firebaseApp)
     private val geminiAuthTutorGateway = GeminiAuthTutorGateway()
     private var accessibilityPromptShown = false
+    private var cachedBlockedEntries: Set<String> = emptySet()
+    private var cachedBlockedPackages: Set<String> = emptySet()
 
     @JavascriptInterface
     fun isFirebaseConfigured(): Boolean = firebaseGateway.isConfigured
@@ -165,17 +167,27 @@ class StudyLockNativeBridge(
             }
         }.getOrDefault(emptyList())
 
+        val entrySet = entries.toSet()
+        val resolvedPackages = if (entrySet == cachedBlockedEntries) {
+            cachedBlockedPackages
+        } else {
+            BlockedAppResolver.resolve(appContext, entries).also { resolved ->
+                cachedBlockedEntries = entrySet
+                cachedBlockedPackages = resolved
+            }
+        }
+
         val wasActive = FocusStateStore.isActive(appContext)
         FocusStateStore.update(
             context = appContext,
             active = active,
             paused = paused,
             remainingSeconds = remainingSeconds.coerceAtLeast(0),
-            blockedPackages = BlockedAppResolver.resolve(appContext, entries),
-            blockedEntries = entries.toSet()
+            blockedPackages = resolvedPackages,
+            blockedEntries = entrySet
         )
 
-        if (active) {
+        if (active && !wasActive) {
             DeviceProtectionController.applyDesiredPolicy(appContext)
         }
 
