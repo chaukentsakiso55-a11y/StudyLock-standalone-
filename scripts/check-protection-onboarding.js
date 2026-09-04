@@ -16,7 +16,10 @@ for (const token of requiredManifestTokens) {
 }
 
 const requiredFlowTokens = [
-  'Set up StudyLock protection',
+  'Allow unrestricted battery use',
+  'Allow app blocking',
+  'Allow device administrator',
+  '.setPositiveButton("Allow")',
   'Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'Settings.ACTION_ACCESSIBILITY_SETTINGS',
   'DeviceProtectionController.requestAdminActivation(activity)',
@@ -25,19 +28,25 @@ const requiredFlowTokens = [
   'ENABLED_ACCESSIBILITY_SERVICES',
   'Allow restricted settings',
   'Open App info',
-  'Try again'
+  'setup_complete',
+  'markSetupComplete(activity, true)',
+  'showNextPermission(activity)'
 ];
 
 for (const token of requiredFlowTokens) {
-  if (!app.includes(token)) throw new Error(`Missing protection onboarding token: ${token}`);
+  if (!app.includes(token)) throw new Error(`Missing simple Allow wizard token: ${token}`);
 }
 
-if (!gradle.includes('versionCode = 12') || !gradle.includes('1.0.10-first-run-protection-setup')) {
-  throw new Error('StudyLock 1.0.10 version bump is missing.');
+if (!gradle.includes('versionCode = 13') || !gradle.includes('1.0.11-simple-allow-wizard')) {
+  throw new Error('StudyLock 1.0.11 version bump is missing.');
 }
 
 if (app.includes('WRITE_SECURE_SETTINGS') || app.includes('pm grant') || app.includes('device_policy set-active-admin')) {
   throw new Error('Protection onboarding must not attempt to bypass Android approval screens.');
 }
 
-console.log('First-run protection onboarding checks passed.');
+if (app.includes('.setPositiveButton("Start setup")')) {
+  throw new Error('The old Start setup confirmation should not remain in the simple Allow wizard.');
+}
+
+console.log('Simple Allow protection wizard checks passed.');
