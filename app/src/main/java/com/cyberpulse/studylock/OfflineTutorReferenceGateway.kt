@@ -109,7 +109,8 @@ class OfflineTutorReferenceGateway(context: Context) {
     private fun queryFts(db: SQLiteDatabase, tokens: List<String>): List<Reference> {
         val matchQuery = tokens.joinToString(" OR ") { "$it*" }
         return db.rawQuery(
-            "SELECT title, subject, grade, source, content FROM reference_fts " +
+            "SELECT r.title, r.subject, r.grade, r.source, r.body " +
+                "FROM reference_fts f JOIN reference_entries r ON r.id = f.docid " +
                 "WHERE reference_fts MATCH ? LIMIT 6",
             arrayOf(matchQuery)
         ).use { cursor ->
@@ -133,8 +134,8 @@ class OfflineTutorReferenceGateway(context: Context) {
         val token = tokens.first()
         val like = "%$token%"
         return db.rawQuery(
-            "SELECT title, subject, grade, source, content FROM reference_entries " +
-                "WHERE lower(title) LIKE ? OR lower(subject) LIKE ? OR lower(content) LIKE ? LIMIT 6",
+            "SELECT title, subject, grade, source, body FROM reference_entries " +
+                "WHERE lower(title) LIKE ? OR lower(subject) LIKE ? OR lower(body) LIKE ? LIMIT 6",
             arrayOf(like, like, like)
         ).use { cursor ->
             buildList {
