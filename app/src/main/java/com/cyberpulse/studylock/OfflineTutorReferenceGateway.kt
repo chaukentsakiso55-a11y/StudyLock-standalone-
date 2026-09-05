@@ -48,11 +48,12 @@ class OfflineTutorReferenceGateway(context: Context) {
             return Result(false, message = "Type a question for the Offline Tutor Library.")
         }
 
+        OfflineTutorLibraryStore.ensureStarterInstalled(appContext)
         val file = OfflineTutorLibraryStore.libraryFile(appContext)
         if (!OfflineTutorLibraryStore.isInstalled(appContext)) {
             return Result(
                 false,
-                message = "You're offline and the Offline Tutor Library is not installed. Open Settings and tap Download Library."
+                message = "The Offline Tutor Library is not installed. Open Settings and check Offline Study Libraries."
             )
         }
 
@@ -67,11 +68,12 @@ class OfflineTutorReferenceGateway(context: Context) {
             SQLiteDatabase.OPEN_READONLY
         )
         val references = database.use { db ->
-            if (tableExists(db, "reference_fts")) {
-                queryFts(db, tokens)
+            val fromFts = if (tableExists(db, "reference_fts")) {
+                runCatching { queryFts(db, tokens) }.getOrDefault(emptyList())
             } else {
-                queryFallback(db, tokens)
+                emptyList()
             }
+            if (fromFts.isNotEmpty()) fromFts else queryFallback(db, tokens)
         }
 
         if (references.isEmpty()) {
@@ -108,9 +110,9 @@ class OfflineTutorReferenceGateway(context: Context) {
 
     private fun queryFts(db: SQLiteDatabase, tokens: List<String>): List<Reference> {
         val matchQuery = tokens.joinToString(" OR ") { "$it*" }
+        val bodyColumn = if (columnExists(db, "reference_fts", "body")) "body" else "content"
         return db.rawQuery(
-            "SELECT r.title, r.subject, r.grade, r.source, r.body " +
-                "FROM reference_fts f JOIN reference_entries r ON r.id = f.docid " +
+            "SELECT title, subject, grade, source, $bodyColumn FROM reference_fts " +
                 "WHERE reference_fts MATCH ? LIMIT 6",
             arrayOf(matchQuery)
         ).use { cursor ->
@@ -131,12 +133,24 @@ class OfflineTutorReferenceGateway(context: Context) {
     }
 
     private fun queryFallback(db: SQLiteDatabase, tokens: List<String>): List<Reference> {
-        val token = tokens.first()
-        val like = "%$token%"
+        if (!tableExists(db, "reference_entries")) return emptyList()
+        val bodyColumn = if (columnExists(db, "reference_entries", "body")) "body" else "content"
+        val clauses = mutableListOf<String>()
+        val args = mutableListOf<String>()
+        tokens.take(5).forEach { token ->
+            clauses += "(lower(title) LIKE ? OR lower(subject) LIKE ? OR lower($bodyColumn) LIKE ?)"
+            val like = "%$token%"
+            args += like
+            args += like
+            args += like
+        }
+        if (clauses.isEmpty()) return emptyList()
+
         return db.rawQuery(
-            "SELECT title, subject, grade, source, body FROM reference_entries " +
-                "WHERE lower(title) LIKE ? OR lower(subject) LIKE ? OR lower(body) LIKE ? LIMIT 6",
-            arrayOf(like, like, like)
+            "SELECT title, subject, grade, source, $bodyColumn FROM reference_entries WHERE " +
+                clauses.joinToString(" OR ") +
+                " LIMIT 6",
+            args.toTypedArray()
         ).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) {
@@ -161,6 +175,19 @@ class OfflineTutorReferenceGateway(context: Context) {
         ).use { cursor ->
             cursor.moveToFirst() && cursor.getInt(0) > 0
         }
+
+    private fun columnExists(db: SQLiteDatabase, table: String, column: String): Boolean =
+        runCatching {
+            db.rawQuery("PRAGMA table_info($table)", null).use { cursor ->
+                val nameIndex = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (nameIndex >= 0 && cursor.getString(nameIndex).equals(column, ignoreCase = true)) {
+                        return@use true
+                    }
+                }
+                false
+            }
+        }.getOrDefault(false)
 
     private fun searchTokens(question: String): List<String> {
         val stopWords = setOf(
