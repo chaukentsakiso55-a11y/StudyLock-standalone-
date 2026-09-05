@@ -121,7 +121,10 @@ android {
     }
 }
 
-tasks.matching { it.name == "mergeDebugAssets" || it.name == "mergeReleaseAssets" }.configureEach {
+tasks.matching {
+    it.name.contains("Assets", ignoreCase = true) ||
+        it.name.contains("Lint", ignoreCase = true)
+}.configureEach {
     dependsOn(prepareStudyLockPrivateAiKey)
 }
 
