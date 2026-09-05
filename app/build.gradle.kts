@@ -41,6 +41,16 @@ val prepareStudyLockPrivateAiKey by tasks.registering {
     }
 }
 
+val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockLauncherRes")
+val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
+val launcherIconFile = generatedLauncherResDir.get()
+    .file("drawable-nodpi/studylock_icon_proper.webp")
+    .asFile
+launcherIconFile.parentFile.mkdirs()
+launcherIconFile.writeBytes(
+    Base64.getDecoder().decode(launcherIconSource.readText().trim())
+)
+
 android {
     namespace = "com.cyberpulse.studylock"
     compileSdk = 35
@@ -49,8 +59,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "1.0.13-downloadable-offline-library"
+        versionCode = 16
+        versionName = "1.0.14-proper-icon-private-ai"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -96,6 +106,7 @@ android {
     }
 
     sourceSets["main"].assets.srcDir(generatedPrivateAiAssetsDir)
+    sourceSets["main"].res.srcDir(generatedLauncherResDir)
 
     buildTypes {
         release {
