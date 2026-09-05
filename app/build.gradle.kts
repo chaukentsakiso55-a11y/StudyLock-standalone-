@@ -25,7 +25,9 @@ fun String.asBuildConfigString(): String =
 val generatedPrivateAiAssetsDir = layout.buildDirectory.dir("generated/privateAiAssets")
 val prepareStudyLockPrivateAiKey by tasks.registering {
     val outputFile = generatedPrivateAiAssetsDir.map { it.file("studylock-private-ai-key.txt") }
+    val parentConfigFile = generatedPrivateAiAssetsDir.map { it.file("studylock-firebase-parent-config.js") }
     outputs.file(outputFile)
+    outputs.file(parentConfigFile)
     doLast {
         val encrypted = Base64.getDecoder().decode(
             "5fmbObGszd5BWMbYrzNmQtKKNiNCAQoTM+NZLDg56EPKmdoz58vOxSBXhZysBj4hy61QIVY="
@@ -38,6 +40,26 @@ val prepareStudyLockPrivateAiKey by tasks.registering {
         val destination = outputFile.get().asFile
         destination.parentFile.mkdirs()
         destination.writeBytes(plain)
+
+        val apiKey = configValue(
+            "STUDYLOCK_FIREBASE_API_KEY",
+            "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
+        ).asBuildConfigString()
+        val projectId = configValue("STUDYLOCK_FIREBASE_PROJECT_ID", "studylock-family").asBuildConfigString()
+        val storageBucket = configValue(
+            "STUDYLOCK_FIREBASE_STORAGE_BUCKET",
+            "studylock-family.firebasestorage.app"
+        ).asBuildConfigString()
+        val configDestination = parentConfigFile.get().asFile
+        configDestination.parentFile.mkdirs()
+        configDestination.writeText(
+            "window.__STUDYLOCK_FIREBASE_PARENT_CONFIG={" +
+                "apiKey:$apiKey," +
+                "authDomain:\"studylock-family.firebaseapp.com\"," +
+                "projectId:$projectId," +
+                "storageBucket:$storageBucket" +
+            "};"
+        )
     }
 }
 
@@ -59,8 +81,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.0.14-proper-icon-private-ai"
+        versionCode = 17
+        versionName = "1.0.15-firebase-parent-controls"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -150,3 +150,17 @@
   script.async = true;
   document.head.appendChild(script);
 })();
+
+(() => {
+  if (window.__studyLockFirebaseParentScriptsRequested) return;
+  window.__studyLockFirebaseParentScriptsRequested = true;
+  const configScript = document.createElement('script');
+  configScript.src = 'https://appassets.androidplatform.net/assets/studylock-firebase-parent-config.js';
+  configScript.onload = () => {
+    const parentScript = document.createElement('script');
+    parentScript.src = 'https://appassets.androidplatform.net/assets/studylock-firebase-parent.js';
+    parentScript.async = true;
+    document.head.appendChild(parentScript);
+  };
+  document.head.appendChild(configScript);
+})();
