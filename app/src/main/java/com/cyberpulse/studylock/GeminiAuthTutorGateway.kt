@@ -61,7 +61,7 @@ class GeminiAuthTutorGateway {
         }
 
         val response = postJson(
-            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+            url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent",
             body = requestBody,
             headers = mapOf("x-goog-api-key" to apiKey)
         )
@@ -155,7 +155,7 @@ class GeminiAuthTutorGateway {
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "StudyLock-Android/1.0.6")
+            setRequestProperty("User-Agent", "StudyLock-Android/1.0.14")
             headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         return try {
