@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -19,6 +21,25 @@ fun configValue(name: String, fallback: String = ""): String =
 
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
+val generatedPrivateAiAssetsDir = layout.buildDirectory.dir("generated/privateAiAssets")
+val prepareStudyLockPrivateAiKey by tasks.registering {
+    val outputFile = generatedPrivateAiAssetsDir.map { it.file("studylock-private-ai-key.txt") }
+    outputs.file(outputFile)
+    doLast {
+        val encrypted = Base64.getDecoder().decode(
+            "5fmbObGszd5BWMbYrzNmQtKKNiNCAQoTM+NZLDg56EPKmdoz58vOxSBXhZysBj4hy61QIVY="
+        )
+        val mask = MessageDigest.getInstance("SHA-256")
+            .digest("StudyLock-CyberPulse-Private-AI-v1".toByteArray(Charsets.UTF_8))
+        val plain = ByteArray(encrypted.size) { index ->
+            (encrypted[index].toInt() xor mask[index % mask.size].toInt()).toByte()
+        }
+        val destination = outputFile.get().asFile
+        destination.parentFile.mkdirs()
+        destination.writeBytes(plain)
+    }
+}
 
 android {
     namespace = "com.cyberpulse.studylock"
@@ -74,6 +95,8 @@ android {
         buildConfigField("int", "OFFLINE_LIBRARY_VERSION", "1")
     }
 
+    sourceSets["main"].assets.srcDir(generatedPrivateAiAssetsDir)
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -96,6 +119,10 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+}
+
+tasks.matching { it.name == "mergeDebugAssets" || it.name == "mergeReleaseAssets" }.configureEach {
+    dependsOn(prepareStudyLockPrivateAiKey)
 }
 
 kotlin {
