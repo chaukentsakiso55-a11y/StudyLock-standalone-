@@ -41,16 +41,24 @@ class GeminiAuthTutorGateway {
             return AiData.error("The tutor request did not contain a question.")
         }
 
+        val requestedTokens = body.optInt("max_tokens", 1_800)
+        val outputTokens = requestedTokens.coerceAtLeast(1_800).coerceAtMost(4_096)
+
         val requestBody = JSONObject()
             .put("contents", contents)
             .put(
                 "generationConfig",
                 JSONObject()
-                    .put("temperature", 0.4)
-                    .put("maxOutputTokens", body.optInt("max_tokens", 500).coerceIn(32, 2_000))
+                    .put("temperature", 0.35)
+                    .put("maxOutputTokens", outputTokens)
             )
 
-        body.optString("system").takeIf(String::isNotBlank)?.let { system ->
+        val originalSystem = body.optString("system").trim()
+        val completionRule = "Give a complete answer. Do not stop in the middle of an explanation, list, worked example, or calculation. For step-by-step questions, finish every requested step and clearly state the final result. Keep the level appropriate for a secondary-school student."
+        val system = listOf(originalSystem, completionRule)
+            .filter { it.isNotBlank() }
+            .joinToString("\n\n")
+        if (system.isNotBlank()) {
             requestBody.put(
                 "systemInstruction",
                 JSONObject().put(
@@ -151,7 +159,7 @@ class GeminiAuthTutorGateway {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 20_000
-            readTimeout = 35_000
+            readTimeout = 50_000
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
