@@ -2,6 +2,7 @@ package com.cyberpulse.studylock
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
 
@@ -49,11 +50,17 @@ class OfflineTutorReferenceGateway(context: Context) {
         }
 
         OfflineTutorLibraryStore.ensureStarterInstalled(appContext)
-        val file = OfflineTutorLibraryStore.libraryFile(appContext)
-        if (!OfflineTutorLibraryStore.isInstalled(appContext)) {
+        val baseFile = OfflineTutorLibraryStore.libraryFile(appContext)
+        val customFiles = CustomReferenceLibraryStore.libraryFiles(appContext)
+        val databaseFiles = buildList {
+            if (baseFile.isFile && baseFile.length() > 0L) add(baseFile)
+            addAll(customFiles)
+        }.distinctBy { it.absolutePath }
+
+        if (databaseFiles.isEmpty()) {
             return Result(
                 false,
-                message = "The Offline Tutor Library is not installed. Open Settings and check Offline Study Libraries."
+                message = "No offline Tutor libraries are installed. Open Settings and check Offline Study Libraries."
             )
         }
 
@@ -62,24 +69,23 @@ class OfflineTutorReferenceGateway(context: Context) {
             return Result(false, message = "Try a more specific study question.")
         }
 
-        val database = SQLiteDatabase.openDatabase(
-            file.absolutePath,
-            null,
-            SQLiteDatabase.OPEN_READONLY
-        )
-        val references = database.use { db ->
-            val fromFts = if (tableExists(db, "reference_fts")) {
-                runCatching { queryFts(db, tokens) }.getOrDefault(emptyList())
-            } else {
-                emptyList()
+        val references = databaseFiles
+            .flatMap { file -> runCatching { queryFile(file, tokens) }.getOrDefault(emptyList()) }
+            .distinctBy { reference ->
+                listOf(
+                    reference.title.trim().lowercase(Locale.ROOT),
+                    reference.subject.trim().lowercase(Locale.ROOT),
+                    reference.grade.trim().lowercase(Locale.ROOT),
+                    reference.content.take(120).trim().lowercase(Locale.ROOT)
+                ).joinToString("|")
             }
-            if (fromFts.isNotEmpty()) fromFts else queryFallback(db, tokens)
-        }
+            .sortedByDescending { reference -> scoreReference(reference, tokens) }
+            .take(8)
 
         if (references.isEmpty()) {
             return Result(
                 false,
-                message = "The installed Offline Tutor Library does not contain a close enough reference for that question."
+                message = "The installed Offline Tutor libraries do not contain a close enough reference for that question."
             )
         }
 
@@ -102,10 +108,26 @@ class OfflineTutorReferenceGateway(context: Context) {
                 if (reference.source.isNotBlank()) append(" — ").append(reference.source)
                 append('\n')
             }
-            append("\nOffline answer • generated only from the installed StudyLock reference library")
+            append("\nOffline answer • generated only from installed StudyLock reference libraries")
         }.trim()
 
         return Result(success = answer.isNotBlank(), text = answer)
+    }
+
+    private fun queryFile(file: File, tokens: List<String>): List<Reference> {
+        val database = SQLiteDatabase.openDatabase(
+            file.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY
+        )
+        return database.use { db ->
+            val fromFts = if (tableExists(db, "reference_fts")) {
+                runCatching { queryFts(db, tokens) }.getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+            if (fromFts.isNotEmpty()) fromFts else queryFallback(db, tokens)
+        }
     }
 
     private fun queryFts(db: SQLiteDatabase, tokens: List<String>): List<Reference> {
@@ -113,7 +135,7 @@ class OfflineTutorReferenceGateway(context: Context) {
         val bodyColumn = if (columnExists(db, "reference_fts", "body")) "body" else "content"
         return db.rawQuery(
             "SELECT title, subject, grade, source, $bodyColumn FROM reference_fts " +
-                "WHERE reference_fts MATCH ? LIMIT 6",
+                "WHERE reference_fts MATCH ? LIMIT 8",
             arrayOf(matchQuery)
         ).use { cursor ->
             buildList {
@@ -134,7 +156,11 @@ class OfflineTutorReferenceGateway(context: Context) {
 
     private fun queryFallback(db: SQLiteDatabase, tokens: List<String>): List<Reference> {
         if (!tableExists(db, "reference_entries")) return emptyList()
-        val bodyColumn = if (columnExists(db, "reference_entries", "body")) "body" else "content"
+        val bodyColumn = when {
+            columnExists(db, "reference_entries", "body") -> "body"
+            columnExists(db, "reference_entries", "content") -> "content"
+            else -> return emptyList()
+        }
         val clauses = mutableListOf<String>()
         val args = mutableListOf<String>()
         tokens.take(5).forEach { token ->
@@ -149,7 +175,7 @@ class OfflineTutorReferenceGateway(context: Context) {
         return db.rawQuery(
             "SELECT title, subject, grade, source, $bodyColumn FROM reference_entries WHERE " +
                 clauses.joinToString(" OR ") +
-                " LIMIT 6",
+                " LIMIT 8",
             args.toTypedArray()
         ).use { cursor ->
             buildList {
@@ -165,6 +191,17 @@ class OfflineTutorReferenceGateway(context: Context) {
                     )
                 }
             }
+        }
+    }
+
+    private fun scoreReference(reference: Reference, tokens: List<String>): Int {
+        val title = reference.title.lowercase(Locale.ROOT)
+        val subject = reference.subject.lowercase(Locale.ROOT)
+        val body = reference.content.lowercase(Locale.ROOT)
+        return tokens.sumOf { token ->
+            (if (title.contains(token)) 4 else 0) +
+                (if (subject.contains(token)) 3 else 0) +
+                (if (body.contains(token)) 1 else 0)
         }
     }
 
