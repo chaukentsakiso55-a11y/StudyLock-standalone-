@@ -223,10 +223,13 @@
     syncConnectPasskeyBtn.disabled = true;
     syncConnectPasskeyBtn.textContent = 'Connecting…';
     const topic = topicFor(code);
+    let unsubscribe = () => {};
     try {
       await ready;
       const channel = db.collection(CHANNELS).doc(code);
       const startedAt = Date.now() - 1000;
+      await firebaseRelayPublish(topic, { type: 'hello', state: snapshotState() });
+
       let settled = false;
       const timeout = setTimeout(() => {
         if (settled) return;
@@ -237,7 +240,8 @@
         syncPasskeyError.textContent = "Dashboard didn't respond. Make sure the parent app is open and showing this passkey.";
         syncPasskeyError.classList.add('show');
       }, 12000);
-      const unsubscribe = channel.collection('messages').where('createdAtMs', '>=', startedAt).onSnapshot(snapshot => {
+
+      unsubscribe = channel.collection('messages').where('createdAtMs', '>=', startedAt).onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
           const data = change.doc.data() || {};
           if (data.senderRole !== 'parent') return;
@@ -256,9 +260,18 @@
           startHeartbeat();
           showToast('Connected to parent dashboard ✓');
         });
+      }, error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        unsubscribe();
+        syncConnectPasskeyBtn.disabled = false;
+        syncConnectPasskeyBtn.textContent = 'Connect';
+        syncPasskeyError.textContent = error?.message || 'Firebase pairing failed.';
+        syncPasskeyError.classList.add('show');
       });
-      await firebaseRelayPublish(topic, { type: 'hello', state: snapshotState() });
     } catch (error) {
+      unsubscribe();
       syncConnectPasskeyBtn.disabled = false;
       syncConnectPasskeyBtn.textContent = 'Connect';
       syncPasskeyError.textContent = error?.message || 'Firebase pairing failed.';
