@@ -46,7 +46,8 @@ for (const token of [
   'filesDir',
   'studylock_reference_library.db',
   'installedVersion',
-  'freeBytes'
+  'freeBytes',
+  'ensureStarterInstalled'
 ]) {
   if (!store.includes(token)) throw new Error(`Missing library store token: ${token}`);
 }
@@ -61,13 +62,15 @@ for (const token of [
 }
 
 for (const token of [
-  'Offline Tutor Library',
-  'Download Library',
+  'Offline Study Libraries',
+  'Download Full Library',
   'Download Update',
   'Cancel',
-  'Remove',
+  'Remove Full Library',
   'getOfflineLibraryState',
-  'startOfflineLibraryDownload'
+  'startOfflineLibraryDownload',
+  'English Dictionary',
+  'Offline Tutor Reference Library'
 ]) {
   if (!ui.includes(token)) throw new Error(`Missing offline library menu token: ${token}`);
 }
