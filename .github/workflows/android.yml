@@ -56,6 +56,7 @@ jobs:
           node --check app/src/main/assets/studylock-offline-dictionary.js
           node --check app/src/main/assets/studylock-offline-library-ui.js
           node --check app/src/main/assets/studylock-firebase-parent.js
+          node --check app/src/main/assets/studylock-reference-sources.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
           node scripts/check-fullscreen-performance.js
