@@ -81,8 +81,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.0.15-firebase-parent-controls"
+        versionCode = 18
+        versionName = "1.0.16-reference-websites"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
