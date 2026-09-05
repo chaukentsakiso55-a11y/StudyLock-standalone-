@@ -164,3 +164,12 @@
   };
   document.head.appendChild(configScript);
 })();
+
+(() => {
+  if (window.__studyLockReferenceSourcesScriptRequested) return;
+  window.__studyLockReferenceSourcesScriptRequested = true;
+  const script = document.createElement('script');
+  script.src = 'https://appassets.androidplatform.net/assets/studylock-reference-sources.js';
+  script.async = true;
+  document.head.appendChild(script);
+})();
