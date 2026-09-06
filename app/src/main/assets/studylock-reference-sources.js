@@ -57,11 +57,11 @@
       <div class="settings-label">Reference Library Websites</div>
       <div class="settings-row" style="display:block;">
         <div class="settings-row-label">StudyLock library sources</div>
-        <div class="settings-row-sub">Browse the official Cyber Pulse reference websites, download StudyLock-compatible library files, then import and view them inside StudyLock.</div>
+        <div class="settings-row-sub">Browse the official Cyber Pulse reference websites, download a library pack, then import and view it inside StudyLock.</div>
       </div>
       <div id="studylockReferenceSourceButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;" id="studylockReferenceLibraryActions"></div>
-      <div class="settings-hint">Supported imports: StudyLock SQLite reference databases (.db/.sqlite/.sqlite3) and ZIP files containing compatible databases. Imported libraries are searched automatically by the offline AI Tutor.</div>
+      <div class="settings-hint">Supported imports now include ZIP packs, SQLite databases, JSON/JSONL, TXT, Markdown, CSV and HTML. StudyLock converts readable website packs into its offline reference database automatically, then the AI Tutor searches them offline.</div>
     `;
 
     const offline = document.getElementById('offlineTutorLibrarySection');
