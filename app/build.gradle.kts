@@ -81,8 +81,8 @@ android {
         applicationId = "com.studylock.student"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.0.16-reference-websites"
+        versionCode = 19
+        versionName = "1.0.17-app-picker-library-pack-fix"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
