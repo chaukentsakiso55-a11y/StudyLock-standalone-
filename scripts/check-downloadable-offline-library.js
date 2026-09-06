@@ -68,8 +68,12 @@ for (const token of [
   'ZipInputStream',
   'reference_entries',
   'MAX_DATABASES_PER_ZIP',
-  'MAX_ZIP_TOTAL_BYTES',
-  'importUri'
+  'MAX_IMPORT_BYTES',
+  'importUri',
+  'JSONTokener',
+  'parseCsv',
+  'extractGenericDatabase',
+  'createCanonicalDatabase'
 ]) {
   if (!customStore.includes(token)) throw new Error(`Missing custom reference import token: ${token}`);
 }
@@ -101,4 +105,4 @@ if (!dictionaryJs.includes('studylock-offline-library-ui.js') || !dictionaryJs.i
   throw new Error('Offline Tutor Library/reference website scripts are not loaded by StudyLock.');
 }
 
-console.log('Downloadable and custom Offline Tutor Library checks passed.');
+console.log('Downloadable and flexible custom Offline Tutor Library checks passed.');

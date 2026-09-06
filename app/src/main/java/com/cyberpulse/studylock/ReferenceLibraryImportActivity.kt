@@ -57,7 +57,7 @@ class ReferenceLibraryImportActivity : ComponentActivity() {
             setBackgroundColor(Color.WHITE)
         }
         status = TextView(this).apply {
-            text = "Choose downloaded StudyLock libraries to import.\n\nSupported formats: StudyLock SQLite databases and ZIP files containing compatible databases."
+            text = "Choose downloaded StudyLock libraries to import.\n\nSupported: ZIP packs, SQLite databases, JSON/JSONL, TXT, Markdown, CSV and HTML. StudyLock converts readable website packs into its offline reference database automatically."
             textSize = 18f
             setTextColor(Color.rgb(33, 23, 15))
             gravity = Gravity.CENTER
@@ -66,15 +66,10 @@ class ReferenceLibraryImportActivity : ComponentActivity() {
         setContentView(root)
 
         if (savedInstanceState == null) {
-            picker.launch(
-                arrayOf(
-                    "application/zip",
-                    "application/octet-stream",
-                    "application/x-sqlite3",
-                    "application/vnd.sqlite3",
-                    "application/x-sqlite"
-                )
-            )
+            // Website downloads are not always labelled with the right MIME type by
+            // Android/Download Manager. Let the user select the file and inspect its
+            // real content signature inside StudyLock instead of rejecting it early.
+            picker.launch(arrayOf("*/*"))
         }
     }
 
