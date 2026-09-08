@@ -80,11 +80,29 @@
     return true;
   }
 
+  function requestLocalScript(src, marker, onload) {
+    if (window[marker]) return;
+    window[marker] = true;
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    if (onload) script.onload = onload;
+    document.head.appendChild(script);
+  }
+
   function attachWhenReady() {
     if (ensureUi()) return;
     setTimeout(attachWhenReady, 350);
   }
 
   attachWhenReady();
+  requestLocalScript(
+    'https://appassets.androidplatform.net/assets/studylock-term3-system.js',
+    '__studyLockTerm3ScriptRequested',
+    () => requestLocalScript(
+      'https://appassets.androidplatform.net/assets/studylock-auto-schedule-bridge.js',
+      '__studyLockAutoScheduleBridgeRequested'
+    )
+  );
   window.studyLockReferenceSources = { sources: SOURCES.slice() };
 })();
