@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import java.util.Calendar
-import kotlin.math.min
 
 object AutoStudyScheduler {
     private const val PREFS = "studylock_auto_study_v3"
@@ -50,7 +49,12 @@ object AutoStudyScheduler {
             .putInt(END_MINUTE, endMinute.coerceIn(0, 1439))
             .putInt(DEFAULT_MINUTES, defaultMinutes.coerceIn(25, 300))
             .apply()
-        if (enabled) scheduleNext(context) else cancel(context)
+        if (enabled) {
+            activateIfInsideWindow(context)
+            scheduleNext(context)
+        } else {
+            cancel(context)
+        }
     }
 
     fun scheduleNext(context: Context) {
@@ -64,11 +68,16 @@ object AutoStudyScheduler {
         setAlarm(manager, context, ACTION_END, REQUEST_END, nextOccurrence(settings.endMinute))
     }
 
+    fun activateIfInsideWindow(context: Context) {
+        val settings = settings(context)
+        if (!settings.enabled || !insideWindow(settings)) return
+        startScheduledSession(context)
+    }
+
     fun startScheduledSession(context: Context) {
         val settings = settings(context)
         if (!settings.enabled) return
-        val remainingToEnd = minutesUntil(settings.endMinute)
-        val sessionMinutes = min(settings.defaultMinutes, remainingToEnd).coerceAtLeast(1)
+        val remainingToEnd = minutesUntil(settings.endMinute).coerceAtLeast(1)
         val entries = FocusStateStore.blockedEntries(context)
         val packages = if (FocusStateStore.blockedPackages(context).isNotEmpty()) {
             FocusStateStore.blockedPackages(context)
@@ -79,7 +88,7 @@ object AutoStudyScheduler {
             context = context,
             active = true,
             paused = false,
-            remainingSeconds = sessionMinutes * 60,
+            remainingSeconds = remainingToEnd * 60,
             blockedPackages = packages,
             blockedEntries = entries
         )
@@ -98,6 +107,17 @@ object AutoStudyScheduler {
             blockedEntries = entries
         )
         scheduleNext(context)
+    }
+
+    private fun insideWindow(settings: Settings): Boolean {
+        val now = Calendar.getInstance()
+        val current = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+        if (settings.startMinute == settings.endMinute) return true
+        return if (settings.startMinute < settings.endMinute) {
+            current >= settings.startMinute && current < settings.endMinute
+        } else {
+            current >= settings.startMinute || current < settings.endMinute
+        }
     }
 
     private fun setAlarm(
@@ -160,7 +180,10 @@ class AutoStudyReceiver : BroadcastReceiver() {
             AutoStudyScheduler.ACTION_END -> AutoStudyScheduler.endScheduledSession(context.applicationContext)
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
-            AutoStudyScheduler.ACTION_RESCHEDULE -> AutoStudyScheduler.scheduleNext(context.applicationContext)
+            AutoStudyScheduler.ACTION_RESCHEDULE -> {
+                AutoStudyScheduler.activateIfInsideWindow(context.applicationContext)
+                AutoStudyScheduler.scheduleNext(context.applicationContext)
+            }
         }
     }
 }
