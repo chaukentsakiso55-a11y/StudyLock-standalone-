@@ -21,27 +21,28 @@ object FocusStateStore {
         blockedPackages: Set<String>,
         blockedEntries: Set<String>
     ) {
+        // StudyLock no longer supports pausing focus sessions. Keep the parameter for
+        // bridge compatibility, but deliberately persist every active session as running.
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         val safeRemaining = remainingSeconds.coerceAtLeast(0)
-        val targetEnd = if (active && !paused) {
+        val targetEnd = if (active) {
             System.currentTimeMillis() + safeRemaining * 1_000L
         } else {
             0L
         }
 
         val sameActive = preferences.getBoolean(ACTIVE, false) == active
-        val samePaused = preferences.getBoolean(PAUSED, false) == paused
+        val samePaused = !preferences.getBoolean(PAUSED, false)
         val samePackages = preferences.getStringSet(BLOCKED_PACKAGES, emptySet())
             ?.toSet().orEmpty() == blockedPackages
         val sameEntries = preferences.getStringSet(BLOCKED_ENTRIES, emptySet())
             ?.toSet().orEmpty() == blockedEntries
-        val existingRemaining = preferences.getInt(REMAINING_SECONDS, 0)
         val existingEnd = preferences.getLong(END_EPOCH_MILLIS, 0L)
 
-        val timerStateAlreadyPersisted = when {
-            !active -> sameActive && samePaused
-            paused -> existingRemaining == safeRemaining
-            else -> abs(existingEnd - targetEnd) <= END_TIME_DRIFT_TOLERANCE_MS
+        val timerStateAlreadyPersisted = if (!active) {
+            sameActive && samePaused
+        } else {
+            abs(existingEnd - targetEnd) <= END_TIME_DRIFT_TOLERANCE_MS
         }
 
         if (
@@ -56,7 +57,7 @@ object FocusStateStore {
 
         preferences.edit()
             .putBoolean(ACTIVE, active)
-            .putBoolean(PAUSED, paused)
+            .putBoolean(PAUSED, false)
             .putInt(REMAINING_SECONDS, safeRemaining)
             .putLong(END_EPOCH_MILLIS, targetEnd)
             .putStringSet(BLOCKED_PACKAGES, blockedPackages)
@@ -67,25 +68,25 @@ object FocusStateStore {
     fun isActive(context: Context): Boolean {
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         if (!preferences.getBoolean(ACTIVE, false)) return false
-        if (preferences.getBoolean(PAUSED, false)) return true
         val end = preferences.getLong(END_EPOCH_MILLIS, 0L)
-        if (end > System.currentTimeMillis()) return true
-        preferences.edit().putBoolean(ACTIVE, false).apply()
+        if (end > System.currentTimeMillis()) {
+            if (preferences.getBoolean(PAUSED, false)) {
+                preferences.edit().putBoolean(PAUSED, false).apply()
+            }
+            return true
+        }
+        preferences.edit()
+            .putBoolean(ACTIVE, false)
+            .putBoolean(PAUSED, false)
+            .apply()
         return false
     }
 
-    fun isPaused(context: Context): Boolean {
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        return preferences.getBoolean(ACTIVE, false) &&
-            preferences.getBoolean(PAUSED, false)
-    }
+    fun isPaused(context: Context): Boolean = false
 
     fun remainingSeconds(context: Context): Int {
         val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
         if (!preferences.getBoolean(ACTIVE, false)) return 0
-        if (preferences.getBoolean(PAUSED, false)) {
-            return preferences.getInt(REMAINING_SECONDS, 0)
-        }
         return ((preferences.getLong(END_EPOCH_MILLIS, 0L) - System.currentTimeMillis()) /
             1_000L).coerceAtLeast(0L).toInt()
     }
