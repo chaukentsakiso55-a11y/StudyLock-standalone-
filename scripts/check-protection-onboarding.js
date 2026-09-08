@@ -8,7 +8,8 @@ const requiredManifestTokens = [
   'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
   'android:name=".StudyLockApplication"',
   'android.permission.BIND_DEVICE_ADMIN',
-  'android.permission.BIND_ACCESSIBILITY_SERVICE'
+  'android.permission.BIND_ACCESSIBILITY_SERVICE',
+  'android.permission.RECEIVE_BOOT_COMPLETED'
 ];
 
 for (const token of requiredManifestTokens) {
@@ -37,8 +38,8 @@ for (const token of requiredFlowTokens) {
   if (!app.includes(token)) throw new Error(`Missing simple Allow wizard token: ${token}`);
 }
 
-if (!gradle.includes('versionCode = 19') || !gradle.includes('1.0.17-app-picker-library-pack-fix')) {
-  throw new Error('StudyLock 1.0.17 version bump is missing.');
+if (!gradle.includes('versionCode = 20') || !gradle.includes('1.1.0-term3-auto-study-control')) {
+  throw new Error('StudyLock 1.1.0 version bump is missing.');
 }
 
 if (app.includes('WRITE_SECURE_SETTINGS') || app.includes('pm grant') || app.includes('device_policy set-active-admin')) {

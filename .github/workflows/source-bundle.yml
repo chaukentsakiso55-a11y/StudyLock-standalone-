@@ -1,0 +1,30 @@
+name: StudyLock source bundle
+
+on:
+  push:
+    branches:
+      - "feature/studylock-term3-autostudy-v1.1.0"
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package current source
+        run: |
+          zip -r StudyLock-1.1.0-current-source.zip . \
+            -x '.git/*' \
+            -x '.gradle/*' \
+            -x 'app/build/*' \
+            -x 'build/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StudyLock-1.1.0-current-source
+          path: StudyLock-1.1.0-current-source.zip
+          if-no-files-found: error
