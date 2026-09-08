@@ -61,7 +61,7 @@
       </div>
       <div id="studylockReferenceSourceButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;" id="studylockReferenceLibraryActions"></div>
-      <div class="settings-hint">Supported imports now include ZIP packs, SQLite databases, JSON/JSONL, TXT, Markdown, CSV and HTML. StudyLock converts readable website packs into its offline reference database automatically, then the AI Tutor searches them offline.</div>
+      <div class="settings-hint">Supported imports include ZIP packs, SQLite databases, JSON/JSONL, TXT, Markdown, CSV and HTML. StudyLock converts readable website packs into its offline reference database automatically, then the AI Tutor searches them offline.</div>
     `;
 
     const offline = document.getElementById('offlineTutorLibrarySection');
@@ -81,7 +81,10 @@
   }
 
   function requestLocalScript(src, marker, onload) {
-    if (window[marker]) return;
+    if (window[marker]) {
+      if (onload) setTimeout(onload, 0);
+      return;
+    }
     window[marker] = true;
     const script = document.createElement('script');
     script.src = src;
@@ -100,8 +103,16 @@
     'https://appassets.androidplatform.net/assets/studylock-term3-system.js',
     '__studyLockTerm3ScriptRequested',
     () => requestLocalScript(
-      'https://appassets.androidplatform.net/assets/studylock-auto-schedule-bridge.js',
-      '__studyLockAutoScheduleBridgeRequested'
+      'https://appassets.androidplatform.net/assets/studylock-session-hardening.js',
+      '__studyLockSessionHardeningScriptRequested',
+      () => requestLocalScript(
+        'https://appassets.androidplatform.net/assets/studylock-auto-schedule-bridge.js',
+        '__studyLockAutoScheduleBridgeRequested',
+        () => requestLocalScript(
+          'https://appassets.androidplatform.net/assets/studylock-admin-control-listener.js',
+          '__studyLockAdminControlScriptRequested'
+        )
+      )
     )
   );
   window.studyLockReferenceSources = { sources: SOURCES.slice() };
