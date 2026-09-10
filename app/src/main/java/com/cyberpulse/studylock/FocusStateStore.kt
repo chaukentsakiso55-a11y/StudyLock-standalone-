@@ -62,6 +62,10 @@ object FocusStateStore {
             .putStringSet(BLOCKED_PACKAGES, blockedPackages)
             .putStringSet(BLOCKED_ENTRIES, blockedEntries)
             .apply()
+
+        val appContext = context.applicationContext
+        StudyLockWidgetProvider.refreshAll(appContext)
+        WearSync.pushFocusState(appContext)
     }
 
     fun isActive(context: Context): Boolean {
@@ -71,6 +75,7 @@ object FocusStateStore {
         val end = preferences.getLong(END_EPOCH_MILLIS, 0L)
         if (end > System.currentTimeMillis()) return true
         preferences.edit().putBoolean(ACTIVE, false).apply()
+        StudyLockWidgetProvider.refreshAll(context.applicationContext)
         return false
     }
 
