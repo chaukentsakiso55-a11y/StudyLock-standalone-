@@ -75,7 +75,6 @@ object FocusStateStore {
         val end = preferences.getLong(END_EPOCH_MILLIS, 0L)
         if (end > System.currentTimeMillis()) return true
         preferences.edit().putBoolean(ACTIVE, false).apply()
-        StudyLockWidgetProvider.refreshAll(context.applicationContext)
         return false
     }
 
