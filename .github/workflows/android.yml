@@ -94,6 +94,17 @@ jobs:
             build-artifacts/studylock-parent.apk \
             build-artifacts/studylock-wear.apk \
             > SHA256SUMS-ci.txt
+      - name: Package Android Studio source
+        run: |
+          zip -r build-artifacts/StudyLock-source-code.zip . \
+            -x '.git/*' \
+               '.gradle/*' \
+               '.dictionary-build/*' \
+               '.dictionary-cache/*' \
+               'build-artifacts/*' \
+               '*/build/*' \
+               '**/build/*' \
+               'functions/node_modules/*'
       - uses: actions/upload-artifact@v4
         with:
           name: StudyLock-student-parent
@@ -101,6 +112,7 @@ jobs:
             build-artifacts/studylock-student.apk
             build-artifacts/studylock-parent.apk
             build-artifacts/studylock-wear.apk
+            build-artifacts/StudyLock-source-code.zip
             studylock-exact.html
             SHA256SUMS-ci.txt
           if-no-files-found: error
