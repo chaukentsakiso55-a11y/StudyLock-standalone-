@@ -203,7 +203,13 @@
         if (data.senderRole !== 'parent') return;
         let message = {};
         try { message = JSON.parse(data.payload || '{}'); } catch (_) {}
-        if (message.type === 'cmd' && message.action === 'end') endStudy();
+        if (message.type === 'cmd') {
+          if (window.StudyLockDirectParent?.applyCommand) {
+            window.StudyLockDirectParent.applyCommand(message);
+          } else if (message.action === 'end' || message.action === 'end_focus') {
+            endStudy();
+          }
+        }
       });
     });
     channelUnsubscribe = channel.onSnapshot(snapshot => {
@@ -258,7 +264,7 @@
           renderSyncSection();
           firebasePersistentListener(topic);
           startHeartbeat();
-          showToast('Connected to parent dashboard ✓');
+          showToast('Connected to StudyLock Parent ✓');
         });
       }, error => {
         if (settled) return;
@@ -301,5 +307,5 @@
   });
 
   setInterval(maybeApplyAutoStudy, 30000);
-  window.studyLockFirebaseParent = { ready, maybeApplyAutoStudy };
+  window.studyLockFirebaseParent = { ready, maybeApplyAutoStudy, attemptPairing: firebaseAttemptPairing };
 })();

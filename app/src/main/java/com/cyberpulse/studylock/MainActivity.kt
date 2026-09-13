@@ -37,6 +37,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity(), RecognitionListener {
     private lateinit var webView: WebView
     private lateinit var nativeBridge: StudyLockNativeBridge
+    private lateinit var directParentBridge: StudyLockDirectParentBridge
     private lateinit var firebaseGateway: FirebaseGateway
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
     private var speechRecognizer: SpeechRecognizer? = null
@@ -78,6 +79,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
         firebaseGateway = FirebaseGateway(applicationContext)
         nativeBridge = StudyLockNativeBridge(this, firebaseGateway)
+        directParentBridge = StudyLockDirectParentBridge(this)
         webView = WebView(this)
 
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
         WebView.setWebContentsDebuggingEnabled(false)
         webView.addJavascriptInterface(nativeBridge, "StudyLockNative")
+        webView.addJavascriptInterface(directParentBridge, "StudyLockParentDirect")
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
                 view: WebView?,
@@ -159,6 +162,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
                 bridgeAttachInProgress = false
                 runCatching {
                     webView.removeJavascriptInterface("StudyLockNative")
+                    webView.removeJavascriptInterface("StudyLockParentDirect")
                     webView.destroy()
                 }
                 runOnUiThread { recreate() }
@@ -243,6 +247,9 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
         val scriptNames = listOf(
             "native-bridge.js",
+            "studylock-managed-ai.js",
+            "studylock-direct-parent.js",
+            "studylock-settings-autolock.js",
             "studylock-performance.js",
             "studylock-enhancements.js",
             "studylock-blocklist-policy.js",
@@ -464,10 +471,12 @@ class MainActivity : ComponentActivity(), RecognitionListener {
     override fun onDestroy() {
         speechRecognizer?.destroy()
         if (::nativeBridge.isInitialized) nativeBridge.close()
+        if (::directParentBridge.isInitialized) directParentBridge.close()
         fileChooserCallback?.onReceiveValue(null)
         fileChooserCallback = null
         if (::webView.isInitialized) {
             webView.removeJavascriptInterface("StudyLockNative")
+            webView.removeJavascriptInterface("StudyLockParentDirect")
             webView.destroy()
         }
         super.onDestroy()
