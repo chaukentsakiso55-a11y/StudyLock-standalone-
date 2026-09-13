@@ -65,18 +65,34 @@ jobs:
           node scripts/check-protection-onboarding.js
           node scripts/check-auto-ai-offline-dictionary.js
           node scripts/check-downloadable-offline-library.js
-      - name: Build and test
+      - name: Build phone and Wear OS apps
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
-      - name: Calculate artifact SHA-256
+          ./gradlew \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :wear:lintDebug \
+            :wear:assembleDebug \
+            --stacktrace
+      - name: Stage APK artifacts
         run: |
-          sha256sum studylock-exact.html app/src/main/assets/studylock-exact.html app/src/main/assets/studylock_dictionary.db app/build/outputs/apk/debug/app-debug.apk > SHA256SUMS-ci.txt
+          mkdir -p build-artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk build-artifacts/studylock.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk build-artifacts/studylock-wear.apk
+          sha256sum \
+            studylock-exact.html \
+            app/src/main/assets/studylock-exact.html \
+            app/src/main/assets/studylock_dictionary.db \
+            build-artifacts/studylock.apk \
+            build-artifacts/studylock-wear.apk \
+            > SHA256SUMS-ci.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: StudyLock-exact-debug
+          name: StudyLock-native-widget-wear
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
+            build-artifacts/studylock.apk
+            build-artifacts/studylock-wear.apk
             studylock-exact.html
             SHA256SUMS-ci.txt
           if-no-files-found: error

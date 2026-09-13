@@ -7,14 +7,14 @@ const sources = fs.readFileSync('app/src/main/assets/studylock-reference-sources
 const picker = fs.readFileSync('app/src/main/assets/studylock-app-picker.js', 'utf8');
 const importer = fs.readFileSync('app/src/main/java/com/cyberpulse/studylock/CustomReferenceLibraryStore.kt', 'utf8');
 
-if (!gradle.includes('versionCode = 19')) {
-  throw new Error('StudyLock 1.0.17 versionCode is missing.');
+if (!gradle.includes('versionCode = 20')) {
+  throw new Error('StudyLock 1.0.18 versionCode is missing.');
 }
-if (!gradle.includes('versionName = "1.0.17-app-picker-library-pack-fix"')) {
-  throw new Error('StudyLock 1.0.17 versionName is missing.');
+if (!gradle.includes('versionName = "1.0.18-widget-wear"')) {
+  throw new Error('StudyLock 1.0.18 versionName is missing.');
 }
 for (const token of ['OFFLINE_LIBRARY_STORAGE_PATH', 'OFFLINE_LIBRARY_VERSION', 'firebase-storage']) {
-  if (!gradle.includes(token)) throw new Error(`StudyLock 1.0.17 library config is missing: ${token}`);
+  if (!gradle.includes(token)) throw new Error(`StudyLock 1.0.18 library config is missing: ${token}`);
 }
 for (const token of ['studylock-firebase-parent-config.js', '__STUDYLOCK_FIREBASE_PARENT_CONFIG']) {
   if (!gradle.includes(token)) throw new Error(`StudyLock Firebase parent config is missing: ${token}`);
@@ -35,8 +35,11 @@ if (!manifest.includes('android:icon="@drawable/studylock_icon_proper"') ||
 if (!manifest.includes('.ReferenceLibraryImportActivity') || !manifest.includes('.ReferenceLibraryViewerActivity')) {
   throw new Error('StudyLock custom reference library activities are missing.');
 }
+if (!manifest.includes('.StudyLockWidgetProvider') || !manifest.includes('.StudyLockWearMessageService')) {
+  throw new Error('StudyLock widget/Wear OS native components are missing.');
+}
 if (!iconPayload.startsWith('UklGR') || iconPayload.length < 10000) {
   throw new Error('StudyLock proper launcher icon payload is missing or invalid.');
 }
 
-console.log('StudyLock 1.0.17 app-picker and library-pack checks passed.');
+console.log('StudyLock 1.0.18 widget/Wear and existing app/library checks passed.');

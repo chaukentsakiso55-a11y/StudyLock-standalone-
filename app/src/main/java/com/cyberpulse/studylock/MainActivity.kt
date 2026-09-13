@@ -243,6 +243,7 @@ class MainActivity : ComponentActivity(), RecognitionListener {
 
         val scriptNames = listOf(
             "native-bridge.js",
+            "studylock-managed-ai.js",
             "studylock-performance.js",
             "studylock-enhancements.js",
             "studylock-blocklist-policy.js",
