@@ -24,6 +24,7 @@ class ParentDirectServer(
     interface Listener {
         fun onDirectStatus(message: String, connected: Boolean)
         fun onStudentState(state: JSONObject)
+        fun onCommandAck(requestId: String, action: String, ok: Boolean, message: String, state: JSONObject?)
     }
 
     private val appContext = context.applicationContext
@@ -70,12 +71,17 @@ class ParentDirectServer(
         return pairingCode
     }
 
-    fun sendCommand(action: String, payload: JSONObject = JSONObject()): Boolean {
+    fun sendCommand(
+        action: String,
+        payload: JSONObject = JSONObject(),
+        requestId: String = UUID.randomUUID().toString()
+    ): Boolean {
         val writer = activeWriter ?: return false
         val command = JSONObject()
             .put("type", "cmd")
             .put("action", action)
-            .put("requestId", UUID.randomUUID().toString())
+            .put("requestId", requestId)
+            .put("createdAtMs", System.currentTimeMillis())
             .put("payload", payload)
         return runCatching {
             synchronized(writeLock) {
@@ -139,6 +145,17 @@ class ParentDirectServer(
                         if (!paired) continue
                         val state = message.optJSONObject("state") ?: JSONObject()
                         mainHandler.post { listener.onStudentState(state) }
+                    }
+                    "command_ack" -> {
+                        if (!paired) continue
+                        val requestId = message.optString("requestId")
+                        val action = message.optString("action")
+                        val ok = message.optBoolean("ok", false)
+                        val detail = message.optString("message")
+                        val state = message.optJSONObject("state")
+                        mainHandler.post {
+                            listener.onCommandAck(requestId, action, ok, detail, state)
+                        }
                     }
                     "ping" -> if (paired) {
                         writeJson(writer, JSONObject().put("type", "pong").put("at", System.currentTimeMillis()))
