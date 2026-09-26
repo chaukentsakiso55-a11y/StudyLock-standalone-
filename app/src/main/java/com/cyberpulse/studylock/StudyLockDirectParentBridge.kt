@@ -29,6 +29,15 @@ class StudyLockDirectParentBridge(
     fun sendState(json: String): Boolean = client.sendState(json)
 
     @JavascriptInterface
+    fun ackCommand(
+        requestId: String,
+        action: String,
+        ok: Boolean,
+        message: String,
+        stateJson: String
+    ): Boolean = client.sendCommandAck(requestId, action, ok, message, stateJson)
+
+    @JavascriptInterface
     fun getState(): String = client.stateJson()
 
     @JavascriptInterface
