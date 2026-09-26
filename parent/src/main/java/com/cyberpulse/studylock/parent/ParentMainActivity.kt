@@ -124,6 +124,9 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
         val sessions = state.optInt("sessionsCompleted", 0)
         val today = state.optString("todayMinutes", state.optString("today", "0m"))
         val mode = state.optString("studyMode", "normal")
+        val blockedCount = state.optInt("blockedSitesCount", state.optJSONArray("blockedEntries")?.length() ?: 0)
+        val protection = state.optJSONObject("protection")
+        val accessibility = protection?.optBoolean("accessibilityEnabled", false) == true
         studentStatusView.text = buildString {
             append(if (active) "FOCUS ACTIVE" else "READY")
             if (paused) append(" • PAUSED")
@@ -132,6 +135,8 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
             append("\nSessions: ").append(sessions)
             append("  •  Streak: ").append(streak)
             append("  •  Mode: ").append(mode)
+            append("\nBlocked: ").append(blockedCount)
+            append("  •  Accessibility: ").append(if (accessibility) "ON" else "OFF")
         }
     }
 
