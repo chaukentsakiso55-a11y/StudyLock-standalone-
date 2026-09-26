@@ -191,8 +191,10 @@
     const code = codeFromTopic(topic);
     if (!code) return;
     const channel = db.collection(CHANNELS).doc(code);
-    const since = Date.now() - 1500;
-    messageUnsubscribe = channel.collection('messages').where('createdAtMs', '>=', since).onSnapshot(snapshot => {
+    messageUnsubscribe = channel.collection('messages')
+      .orderBy('createdAtMs', 'desc')
+      .limit(100)
+      .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type !== 'added') return;
         const data = change.doc.data() || {};
@@ -230,7 +232,10 @@
       await ready;
       const channel = db.collection(CHANNELS).doc(code);
       const startedAt = Date.now() - 1000;
-      await firebaseRelayPublish(topic, { type: 'hello', state: snapshotState() });
+      await firebaseRelayPublish(topic, {
+        type: 'hello',
+        state: window.StudyLockParentControl?.snapshot?.() || {}
+      });
 
       let settled = false;
       const timeout = setTimeout(() => {
@@ -253,13 +258,10 @@
           settled = true;
           clearTimeout(timeout);
           unsubscribe();
-          pairedTopic = topic;
-          localStorage.setItem(RELAY_TOPIC_KEY, pairedTopic);
           syncConnectPasskeyBtn.disabled = false;
           syncConnectPasskeyBtn.textContent = 'Connect';
-          renderSyncSection();
+          window.StudyLockParentControl?.completePairing?.(topic);
           firebasePersistentListener(topic);
-          startHeartbeat();
           showToast('Connected to StudyLock Parent ✓');
         });
       }, error => {
@@ -281,27 +283,36 @@
     }
   }
 
+  async function sendToParent(value) {
+    const topic = window.StudyLockParentControl?.getPairedTopic?.() || '';
+    if (!topic) return false;
+    await firebaseRelayPublish(topic, value);
+    return true;
+  }
+
   ready.then(() => {
-    relayPublish = function firebasePublishReplacement(topic, value) {
+    const publish = function firebasePublishReplacement(topic, value) {
       firebaseRelayPublish(topic, value).catch(error => {
         console.warn('StudyLock Firebase parent publish failed', error);
       });
     };
-    startPersistentListener = function firebaseListenerReplacement(topic) {
+    const listen = function firebaseListenerReplacement(topic) {
       firebasePersistentListener(topic).catch(error => console.warn('StudyLock Firebase parent listener failed', error));
     };
-    attemptPairing = firebaseAttemptPairing;
+    window.StudyLockParentControl?.installParentTransport?.(publish, listen, firebaseAttemptPairing);
 
-    if (pairedTopic) {
-      try { persistentRelaySource?.close?.(); } catch (_) {}
-      firebasePersistentListener(pairedTopic);
-      startHeartbeat();
-    }
+    const paired = window.StudyLockParentControl?.getPairedTopic?.() || '';
+    if (paired) firebasePersistentListener(paired);
     maybeApplyAutoStudy();
   }).catch(error => {
     console.warn('StudyLock Firebase parent controls unavailable', error);
   });
 
   setInterval(maybeApplyAutoStudy, 30000);
-  window.studyLockFirebaseParent = { ready, maybeApplyAutoStudy, attemptPairing: firebaseAttemptPairing };
+  window.studyLockFirebaseParent = {
+    ready,
+    maybeApplyAutoStudy,
+    attemptPairing: firebaseAttemptPairing,
+    sendToParent
+  };
 })();
