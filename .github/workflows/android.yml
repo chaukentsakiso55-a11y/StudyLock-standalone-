@@ -180,21 +180,17 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            set -eux
-            APK="release-artifacts/${{ matrix.apk }}"
-            PACKAGE="${{ matrix.package }}"
-            COMPONENT="${{ matrix.package }}/${{ matrix.activity }}"
-            adb install "$APK"
-            adb shell am start -W -n "$COMPONENT"
+            adb install "release-artifacts/${{ matrix.apk }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 3
-            adb shell pidof "$PACKAGE"
-            adb install -r "$APK"
-            adb shell am force-stop "$PACKAGE"
-            adb shell am start -W -n "$COMPONENT"
+            adb shell pidof "${{ matrix.package }}"
+            adb install -r "release-artifacts/${{ matrix.apk }}"
+            adb shell am force-stop "${{ matrix.package }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 2
-            adb shell pidof "$PACKAGE"
-            adb uninstall "$PACKAGE"
-            adb install "$APK"
-            adb shell am start -W -n "$COMPONENT"
+            adb shell pidof "${{ matrix.package }}"
+            adb uninstall "${{ matrix.package }}"
+            adb install "release-artifacts/${{ matrix.apk }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 2
-            adb shell pidof "$PACKAGE"
+            adb shell pidof "${{ matrix.package }}"
