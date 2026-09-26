@@ -2,15 +2,6 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow create, read, update: if request.auth != null && request.auth.uid == userId;
-      allow delete: if false;
-
-      match /studylock/{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-
     match /studylock_parent_channels/{code} {
       allow get: if request.auth != null;
       allow list: if false;
@@ -26,12 +17,7 @@ service cloud.firestore {
           request.resource.data.studentUid == request.auth.uid &&
           request.resource.data.parentUid == resource.data.parentUid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'studentUid',
-            'connected',
-            'studentOnline',
-            'lastStudentSeenMs',
-            'studentState',
-            'updatedAtMs'
+            'studentUid', 'connected', 'studentOnline', 'lastStudentSeenMs', 'studentState', 'updatedAtMs'
           ])
         ) ||
         (
@@ -39,11 +25,7 @@ service cloud.firestore {
           request.resource.data.parentUid == resource.data.parentUid &&
           request.resource.data.studentUid == resource.data.studentUid &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'connected',
-            'studentOnline',
-            'lastStudentSeenMs',
-            'studentState',
-            'updatedAtMs'
+            'connected', 'studentOnline', 'lastStudentSeenMs', 'studentState', 'updatedAtMs'
           ])
         )
       );
@@ -54,15 +36,12 @@ service cloud.firestore {
         function channel() {
           return get(/databases/$(database)/documents/studylock_parent_channels/$(code)).data;
         }
-
         function isParent() {
           return request.auth != null && channel().parentUid == request.auth.uid;
         }
-
         function isStudent() {
           return request.auth != null && channel().studentUid == request.auth.uid;
         }
-
         allow read: if isParent() || isStudent();
         allow create: if (isParent() || isStudent())
           && request.resource.data.senderUid == request.auth.uid
@@ -71,6 +50,56 @@ service cloud.firestore {
             (isStudent() && request.resource.data.senderRole == 'student')
           );
         allow update, delete: if false;
+      }
+    }
+
+    // Teacher/Classroom channel. Kept separate from Parent controls so a teacher
+    // cannot unlock settings, change app restrictions, or impersonate a parent.
+    match /studylock_teacher_classes/{code} {
+      function signedIn() { return request.auth != null; }
+      function classData() {
+        return get(/databases/$(database)/documents/studylock_teacher_classes/$(code)).data;
+      }
+      function isTeacher() {
+        return signedIn() && classData().teacherUid == request.auth.uid;
+      }
+      function isJoinedStudent() {
+        return signedIn() && exists(/databases/$(database)/documents/studylock_teacher_classes/$(code)/students/$(request.auth.uid));
+      }
+
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.teacherUid == request.auth.uid;
+      allow update, delete: if isTeacher();
+
+      match /students/{studentUid} {
+        function teacherOwnsClass() {
+          return request.auth != null
+            && get(/databases/$(database)/documents/studylock_teacher_classes/$(code)).data.teacherUid == request.auth.uid;
+        }
+        allow read: if teacherOwnsClass() || (request.auth != null && request.auth.uid == studentUid);
+        allow create, update: if request.auth != null && request.auth.uid == studentUid;
+        allow delete: if teacherOwnsClass() || (request.auth != null && request.auth.uid == studentUid);
+      }
+
+      match /messages/{messageId} {
+        function teacherOwnsClass() {
+          return request.auth != null
+            && get(/databases/$(database)/documents/studylock_teacher_classes/$(code)).data.teacherUid == request.auth.uid;
+        }
+        function studentJoined() {
+          return request.auth != null
+            && exists(/databases/$(database)/documents/studylock_teacher_classes/$(code)/students/$(request.auth.uid));
+        }
+        allow read: if teacherOwnsClass() || studentJoined();
+        allow create: if request.auth != null
+          && request.resource.data.senderUid == request.auth.uid
+          && (
+            (teacherOwnsClass() && request.resource.data.senderRole == 'teacher') ||
+            (studentJoined() && request.resource.data.senderRole == 'student')
+          );
+        allow update, delete: if teacherOwnsClass();
       }
     }
   }
