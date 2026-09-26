@@ -163,7 +163,7 @@
           if (subject) localStorage.setItem('studylock_parent_subject', subject);
           chooseMinutes(payload.minutes);
           if (document.getElementById('hero')?.classList.contains('locked') !== true && typeof startSession === 'function') {
-            startSession();
+            startSession(true);
           }
           toast(subject ? `Parent started ${subject} focus` : 'Parent started a StudyLock focus session');
           break;
