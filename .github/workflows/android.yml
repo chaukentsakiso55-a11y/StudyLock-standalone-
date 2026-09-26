@@ -59,6 +59,8 @@ jobs:
           node --check app/src/main/assets/studylock-offline-dictionary.js
           node --check app/src/main/assets/studylock-offline-library-ui.js
           node --check app/src/main/assets/studylock-firebase-parent.js
+          node --check app/src/main/assets/studylock-firebase-rest-compat.js
+          node --check app/src/main/assets/studylock-teacher-classroom.js
           node --check app/src/main/assets/studylock-reference-sources.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
@@ -77,6 +79,8 @@ jobs:
             :app:assembleDebug \
             :parent:lintDebug \
             :parent:assembleDebug \
+            :teacher:lintDebug \
+            :teacher:assembleDebug \
             :wear:lintDebug \
             :wear:assembleDebug \
             --stacktrace
@@ -85,6 +89,7 @@ jobs:
           mkdir -p build-artifacts
           cp app/build/outputs/apk/debug/app-debug.apk build-artifacts/studylock-student.apk
           cp parent/build/outputs/apk/debug/parent-debug.apk build-artifacts/studylock-parent.apk
+          cp teacher/build/outputs/apk/debug/teacher-debug.apk build-artifacts/studylock-teacher.apk
           cp wear/build/outputs/apk/debug/wear-debug.apk build-artifacts/studylock-wear.apk
           sha256sum \
             studylock-exact.html \
@@ -92,6 +97,7 @@ jobs:
             app/src/main/assets/studylock_dictionary.db \
             build-artifacts/studylock-student.apk \
             build-artifacts/studylock-parent.apk \
+            build-artifacts/studylock-teacher.apk \
             build-artifacts/studylock-wear.apk \
             > SHA256SUMS-ci.txt
       - name: Package Android Studio source
@@ -111,6 +117,7 @@ jobs:
           path: |
             build-artifacts/studylock-student.apk
             build-artifacts/studylock-parent.apk
+            build-artifacts/studylock-teacher.apk
             build-artifacts/studylock-wear.apk
             build-artifacts/StudyLock-source-code.zip
             studylock-exact.html
