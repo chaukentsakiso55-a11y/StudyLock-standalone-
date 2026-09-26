@@ -3,6 +3,8 @@ package com.cyberpulse.studylock.parent
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup
@@ -15,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudGateway.Listener {
     private lateinit var directServer: ParentDirectServer
@@ -24,6 +27,10 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
     private lateinit var directStatusView: TextView
     private lateinit var cloudStatusView: TextView
     private lateinit var studentStatusView: TextView
+    private lateinit var commandStatusView: TextView
+
+    private val commandHandler = Handler(Looper.getMainLooper())
+    private val pendingCommands = mutableMapOf<String, String>()
 
     private lateinit var minutesInput: EditText
     private lateinit var subjectInput: EditText
@@ -52,6 +59,8 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
     }
 
     override fun onDestroy() {
+        commandHandler.removeCallbacksAndMessages(null)
+        pendingCommands.clear()
         directServer.stop()
         cloudGateway.close()
         super.onDestroy()
@@ -64,6 +73,45 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
 
     override fun onCloudStatus(message: String) {
         cloudStatusView.text = "Fallback: $message"
+    }
+
+    override fun onCommandAck(
+        requestId: String,
+        action: String,
+        ok: Boolean,
+        message: String,
+        state: JSONObject?
+    ) {
+        handleCommandAck(requestId, action, ok, message, state)
+    }
+
+    override fun onCloudCommandAck(
+        requestId: String,
+        action: String,
+        ok: Boolean,
+        message: String,
+        state: JSONObject?
+    ) {
+        handleCommandAck(requestId, action, ok, message, state)
+    }
+
+    private fun handleCommandAck(
+        requestId: String,
+        action: String,
+        ok: Boolean,
+        message: String,
+        state: JSONObject?
+    ) {
+        if (requestId.isBlank() || pendingCommands.remove(requestId) == null) return
+        state?.let(::onStudentState)
+        val actionLabel = action.replace('_', ' ')
+        commandStatusView.text = if (ok) {
+            "$actionLabel applied on Student ✓"
+        } else {
+            "$actionLabel failed on Student: ${message.ifBlank { "execution failed" }}"
+        }
+        commandStatusView.setTextColor(if (ok) OK else ERROR)
+        toast(commandStatusView.text.toString())
     }
 
     override fun onStudentState(state: JSONObject) {
@@ -115,6 +163,8 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
         root.addView(sectionTitle("STUDENT STATUS"))
         studentStatusView = text("Waiting for Student…", 15f, Color.WHITE, false)
         root.addView(card(studentStatusView))
+        commandStatusView = text("No command pending", 12f, MUTED, false)
+        root.addView(commandStatusView.withTop(8))
         root.addView(button("Refresh student state") { send("refresh_state") }.withTop(8))
         root.addView(button("Lock Student Settings now") { send("lock_settings") }.withTop(6))
 
@@ -224,13 +274,27 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
     }
 
     private fun send(action: String, payload: JSONObject = JSONObject()) {
-        val direct = directServer.sendCommand(action, payload)
-        val cloud = cloudGateway.sendCommand(action, payload)
-        when {
-            direct -> toast("Sent directly to Student ✓")
-            cloud -> toast("Sent through cloud fallback")
-            else -> toast("Student is not connected yet")
+        val requestId = UUID.randomUUID().toString()
+        val direct = directServer.sendCommand(action, payload, requestId)
+        val cloud = cloudGateway.sendCommand(action, payload, requestId)
+        if (!direct && !cloud) {
+            commandStatusView.text = "Student unavailable — command not sent"
+            commandStatusView.setTextColor(ERROR)
+            toast("Student is not connected yet")
+            return
         }
+
+        pendingCommands[requestId] = action
+        commandStatusView.text = "Command pending · waiting for Student confirmation…"
+        commandStatusView.setTextColor(MUTED)
+        toast(if (direct) "Command sent directly · waiting for Student…" else "Command sent by cloud · waiting for Student…")
+
+        commandHandler.postDelayed({
+            if (pendingCommands.remove(requestId) != null) {
+                commandStatusView.text = "Student unavailable · command was not confirmed"
+                commandStatusView.setTextColor(ERROR)
+            }
+        }, COMMAND_ACK_TIMEOUT_MS)
     }
 
     private fun parseTime(raw: String): Int {
@@ -311,5 +375,7 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
         private val ACCENT = Color.rgb(255, 177, 0)
         private val MUTED = Color.rgb(226, 204, 160)
         private val OK = Color.rgb(101, 230, 167)
+        private val ERROR = Color.rgb(255, 120, 104)
+        private const val COMMAND_ACK_TIMEOUT_MS = 12_000L
     }
 }
