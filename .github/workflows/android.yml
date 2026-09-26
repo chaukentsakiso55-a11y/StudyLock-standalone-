@@ -1,4 +1,4 @@
-name: StudyLock student + parent Android build
+name: StudyLock Student Parent Teacher release validation
 
 on:
   push:
@@ -70,7 +70,9 @@ jobs:
           node scripts/check-protection-onboarding.js
           node scripts/check-auto-ai-offline-dictionary.js
           node scripts/check-downloadable-offline-library.js
-      - name: Build Student, Parent and Wear OS apps
+          node scripts/check-parent-command-protocol.js
+          node scripts/check-cross-app-contracts.js
+      - name: Build Student, Parent, Teacher and Wear OS apps
         run: |
           chmod +x gradlew
           ./gradlew \
@@ -100,6 +102,22 @@ jobs:
             build-artifacts/studylock-teacher.apk \
             build-artifacts/studylock-wear.apk \
             > SHA256SUMS-ci.txt
+      - name: Verify APK package structure and signatures
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          test -x "$ZIPALIGN"
+          for apk in build-artifacts/studylock-student.apk build-artifacts/studylock-parent.apk build-artifacts/studylock-teacher.apk; do
+            "$APKSIGNER" verify --verbose "$apk"
+            "$ZIPALIGN" -c -P 16 -v 4 "$apk"
+            "$AAPT" dump badging "$apk" | head -20
+          done
+          "$AAPT" dump badging build-artifacts/studylock-student.apk | grep "package: name='com.studylock.student'"
+          "$AAPT" dump badging build-artifacts/studylock-parent.apk | grep "package: name='com.studylock.parent'"
+          "$AAPT" dump badging build-artifacts/studylock-teacher.apk | grep "package: name='com.studylock.teacher'"
       - name: Package Android Studio source
         run: |
           zip -r build-artifacts/StudyLock-source-code.zip . \
@@ -123,3 +141,60 @@ jobs:
             studylock-exact.html
             SHA256SUMS-ci.txt
           if-no-files-found: error
+
+  device-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Student
+            apk: studylock-student.apk
+            package: com.studylock.student
+            activity: com.cyberpulse.studylock.MainActivity
+          - name: Parent
+            apk: studylock-parent.apk
+            package: com.studylock.parent
+            activity: com.cyberpulse.studylock.parent.ParentMainActivity
+          - name: Teacher
+            apk: studylock-teacher.apk
+            package: com.studylock.teacher
+            activity: com.cyberpulse.studylock.teacher.TeacherMainActivity
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: StudyLock-student-parent
+          path: release-artifacts
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Fresh install, launch, upgrade and reinstall ${{ matrix.name }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            set -euxo pipefail
+            APK="release-artifacts/${{ matrix.apk }}"
+            PACKAGE="${{ matrix.package }}"
+            COMPONENT="${{ matrix.package }}/${{ matrix.activity }}"
+            adb install "$APK"
+            adb shell am start -W -n "$COMPONENT"
+            sleep 3
+            adb shell pidof "$PACKAGE"
+            adb install -r "$APK"
+            adb shell am force-stop "$PACKAGE"
+            adb shell am start -W -n "$COMPONENT"
+            sleep 2
+            adb shell pidof "$PACKAGE"
+            adb uninstall "$PACKAGE"
+            adb install "$APK"
+            adb shell am start -W -n "$COMPONENT"
+            sleep 2
+            adb shell pidof "$PACKAGE"
