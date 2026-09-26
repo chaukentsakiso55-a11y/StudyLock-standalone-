@@ -27,9 +27,7 @@
   }
 
   const ready = (async () => {
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js');
+    if (!window.firebase?.initializeApp) await loadScript('studylock-firebase-rest-compat.js');
     const config = window.__STUDYLOCK_FIREBASE_PARENT_CONFIG;
     if (!config?.apiKey || !config?.projectId) throw new Error('Firebase parent sync config missing');
     app = window.firebase.apps.find(item => item.name === APP_NAME) || window.firebase.initializeApp(config, APP_NAME);
@@ -78,19 +76,17 @@
 
     if (data.type === 'hello') {
       const now = Date.now();
-      await db.runTransaction(async transaction => {
-        const snapshot = await transaction.get(channel);
-        if (!snapshot.exists) throw new Error('Pairing code not found');
-        const channelData = snapshot.data() || {};
-        if (channelData.expiresAtMs && channelData.expiresAtMs < now) throw new Error('Pairing code expired');
-        if (channelData.studentUid && channelData.studentUid !== currentUid) throw new Error('Pairing code already connected');
-        transaction.set(channel, {
-          studentUid: currentUid,
-          connected: true,
-          studentOnline: true,
-          lastStudentSeenMs: now
-        }, { merge: true });
-      });
+      const snapshot = await channel.get();
+      if (!snapshot.exists) throw new Error('Pairing code not found');
+      const channelData = snapshot.data() || {};
+      if (channelData.expiresAtMs && channelData.expiresAtMs < now) throw new Error('Pairing code expired');
+      if (channelData.studentUid && channelData.studentUid !== currentUid) throw new Error('Pairing code already connected');
+      await channel.set({
+        studentUid: currentUid,
+        connected: true,
+        studentOnline: true,
+        lastStudentSeenMs: now
+      }, { merge: true });
       if (data.state) {
         await channel.set({ studentState: toPlain(data.state), studentOnline: true, lastStudentSeenMs: Date.now() }, { merge: true });
       }
@@ -133,7 +129,7 @@
   function startStudy(minutes, message) {
     if (focusActive()) return;
     selectMinutes(minutes);
-    if (typeof startSession === 'function') startSession();
+    if (typeof startSession === 'function') startSession(true);
     window.StudyLockNativeHooks?.showToast?.(message || 'Focus session started from the parent dashboard.');
   }
 
