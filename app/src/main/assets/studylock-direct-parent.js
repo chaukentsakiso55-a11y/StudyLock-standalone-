@@ -35,7 +35,7 @@
   function currentState() {
     let base = {};
     try {
-      if (typeof snapshotState === 'function') base = snapshotState() || {};
+      base = window.StudyLockParentControl?.snapshot?.() || {};
     } catch (_) {}
 
     const timerText = document.getElementById('timerDisplay')?.textContent?.trim() || '00:00';
@@ -149,33 +149,59 @@
     updateParentSettingsSummary();
   }
 
+  function acknowledgeCommand(requestId, action, ok, message) {
+    const state = currentState();
+    try {
+      native.ackCommand(
+        String(requestId || ''),
+        String(action || ''),
+        !!ok,
+        String(message || ''),
+        JSON.stringify(state)
+      );
+    } catch (_) {}
+    try {
+      window.studyLockFirebaseParent?.sendToParent?.({
+        type: 'command_ack',
+        requestId: String(requestId || ''),
+        action: String(action || ''),
+        ok: !!ok,
+        message: String(message || ''),
+        at: Date.now(),
+        state
+      });
+    } catch (_) {}
+  }
+
   function applyCommand(command) {
     if (!command || command.type !== 'cmd') return;
     const requestId = String(command.requestId || '');
     if (alreadySeen(requestId)) return;
     const action = String(command.action || '');
     const payload = command.payload && typeof command.payload === 'object' ? command.payload : {};
+    const control = window.StudyLockParentControl;
+    let ok = true;
+    let message = 'Applied';
 
     try {
       switch (action) {
         case 'start_focus': {
           const subject = String(payload.subject || '').trim();
-          if (subject) localStorage.setItem('studylock_parent_subject', subject);
-          chooseMinutes(payload.minutes);
-          if (document.getElementById('hero')?.classList.contains('locked') !== true && typeof startSession === 'function') {
-            startSession(true);
-          }
-          toast(subject ? `Parent started ${subject} focus` : 'Parent started a StudyLock focus session');
+          ok = !!control?.startFocus?.(payload.minutes, subject);
+          message = ok ? 'Focus session started' : 'Focus could not start. Check Student Accessibility permission.';
           break;
         }
         case 'pause_focus':
-          if (typeof state !== 'undefined' && state.isLocked && !state.isPaused && typeof pauseBtn !== 'undefined') pauseBtn.click();
+          ok = !!control?.pauseFocus?.();
+          message = ok ? 'Focus paused' : 'No active focus session to pause';
           break;
         case 'resume_focus':
-          if (typeof state !== 'undefined' && state.isLocked && state.isPaused && typeof pauseBtn !== 'undefined') pauseBtn.click();
+          ok = !!control?.resumeFocus?.();
+          message = ok ? 'Focus resumed' : 'No paused focus session to resume';
           break;
         case 'end_focus':
-          if (document.getElementById('hero')?.classList.contains('locked') && typeof endSessionEarly === 'function') endSessionEarly();
+          ok = !!control?.endFocus?.();
+          message = ok ? 'Focus session ended' : 'Focus session could not be ended';
           break;
         case 'set_schedule':
           localStorage.setItem(AUTO_KEY, JSON.stringify({
@@ -184,30 +210,29 @@
             startMinuteOfDay: Number(payload.startMinuteOfDay ?? -1)
           }));
           window.studyLockFirebaseParent?.maybeApplyAutoStudy?.();
-          toast('Parent updated the StudyLock schedule');
+          message = 'Schedule updated';
           break;
         case 'set_blocked': {
           const entries = normalizeEntries(payload.entries);
-          const stored = entries.map(name => ({ name, icon: name.slice(0, 2).toUpperCase() }));
-          localStorage.setItem(BLOCKED_KEY, JSON.stringify(stored));
-          document.dispatchEvent(new CustomEvent('studylock:blocklist-changed'));
-          if (typeof render === 'function') render();
-          toast('Parent updated blocked apps/sites');
+          const applied = control?.setBlocked?.(entries);
+          ok = Array.isArray(applied) && applied.length === entries.length &&
+            applied.every((entry, index) => entry === entries[index]);
+          message = ok ? 'Blocked-app list updated' : 'Blocked-app list did not apply correctly';
           break;
         }
         case 'set_allowed':
           localStorage.setItem(ALLOWED_KEY, JSON.stringify(normalizeEntries(payload.entries)));
-          toast('Parent updated allowed apps');
+          message = 'Allowed-app list updated';
           break;
         case 'set_goal':
           localStorage.setItem(GOAL_KEY, String(payload.text || '').trim());
           updateParentSettingsSummary();
-          toast('New parent study goal received');
+          message = 'Study goal updated';
           break;
         case 'set_assignment':
           localStorage.setItem(ASSIGNMENT_KEY, String(payload.text || '').trim());
           updateParentSettingsSummary();
-          toast('New StudyLock assignment received');
+          message = 'Assignment updated';
           break;
         case 'set_quiz':
           localStorage.setItem(QUIZ_KEY, JSON.stringify({
@@ -215,26 +240,42 @@
             difficulty: String(payload.difficulty || 'medium').trim()
           }));
           updateParentSettingsSummary();
-          toast('Parent assigned a quiz');
+          message = 'Quiz assignment updated';
           break;
         case 'set_mode':
           localStorage.setItem(MODE_KEY, String(payload.mode || 'normal'));
           updateParentSettingsSummary();
-          toast(`StudyLock mode: ${String(payload.mode || 'normal')}`);
+          message = 'Study mode updated';
           break;
         case 'lock_settings':
-          window.StudyLockSettingsLock?.lockNow?.();
-          toast('Settings locked by Parent');
+          if (window.StudyLockSettingsLock?.lockNow) {
+            window.StudyLockSettingsLock.lockNow();
+            message = 'Settings locked';
+          } else {
+            ok = false;
+            message = 'Settings lock is unavailable';
+          }
           break;
         case 'refresh_state':
         case 'protection_status':
-          pushState();
+          message = 'Student state refreshed';
           break;
+        default:
+          ok = false;
+          message = 'Unknown Parent command';
       }
     } catch (error) {
+      ok = false;
+      message = error?.message || 'Student command execution failed';
       console.warn('StudyLock could not apply Parent command', action, error);
     }
-    setTimeout(pushState, 250);
+
+    if (ok) toast(message);
+    acknowledgeCommand(requestId, action, ok, message);
+    setTimeout(() => {
+      pushState();
+      try { window.StudyLockParentControl?.pushParentState?.(); } catch (_) {}
+    }, 150);
   }
 
   function drainCommands() {
