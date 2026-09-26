@@ -1,4 +1,3 @@
-import java.security.MessageDigest
 import java.util.Base64
 import java.util.Properties
 
@@ -21,25 +20,6 @@ fun configValue(name: String, fallback: String = ""): String =
 
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
-
-val generatedPrivateAiAssetsDir = layout.buildDirectory.dir("generated/privateAiAssets")
-val prepareStudyLockTeacherPrivateAiKey by tasks.registering {
-    val outputFile = generatedPrivateAiAssetsDir.map { it.file("studylock-private-ai-key.txt") }
-    outputs.file(outputFile)
-    doLast {
-        val encrypted = Base64.getDecoder().decode(
-            "5fmbObGszd5BWMbYrzNmQtKKNiNCAQoTM+NZLDg56EPKmdoz58vOxSBXhZysBj4hy61QIVY="
-        )
-        val mask = MessageDigest.getInstance("SHA-256")
-            .digest("StudyLock-CyberPulse-Private-AI-v1".toByteArray(Charsets.UTF_8))
-        val plain = ByteArray(encrypted.size) { index ->
-            (encrypted[index].toInt() xor mask[index % mask.size].toInt()).toByte()
-        }
-        val destination = outputFile.get().asFile
-        destination.parentFile.mkdirs()
-        destination.writeBytes(plain)
-    }
-}
 
 val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockTeacherLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
@@ -83,7 +63,6 @@ android {
         )
     }
 
-    sourceSets["main"].assets.srcDir(generatedPrivateAiAssetsDir)
     sourceSets["main"].res.srcDir(generatedLauncherResDir)
 
     buildTypes {
@@ -101,12 +80,6 @@ android {
     buildFeatures {
         buildConfig = true
     }
-}
-
-tasks.matching {
-    it.name.contains("Assets", ignoreCase = true) || it.name.contains("Lint", ignoreCase = true)
-}.configureEach {
-    dependsOn(prepareStudyLockTeacherPrivateAiKey)
 }
 
 kotlin {
