@@ -304,7 +304,9 @@
         toast('Direct Wi-Fi pairing unavailable — trying cloud fallback…');
         setTimeout(() => {
           try {
-            if (typeof attemptPairing === 'function') attemptPairing(pendingCode);
+            const cloudPair = window.studyLockFirebaseParent?.attemptPairing;
+            if (typeof cloudPair === 'function') cloudPair(pendingCode);
+            else throw new Error('Cloud pairing is still initializing');
           } catch (error) {
             console.warn('StudyLock cloud fallback pairing failed to start', error);
           }
