@@ -147,7 +147,16 @@ class ParentCloudGateway(
             val data = snapshot?.data ?: return@addSnapshotListener
             val state = data["studentState"]
             if (state is Map<*, *>) listener.onStudentState(mapToJson(state))
-            if (data["studentUid"] != null) listener.onCloudStatus("Student paired — cloud fallback active")
+            val studentUid = data["studentUid"]?.toString().orEmpty()
+            val lastSeen = (data["lastStudentSeenMs"] as? Number)?.toLong() ?: 0L
+            val ageMs = System.currentTimeMillis() - lastSeen
+            listener.onCloudStatus(
+                when {
+                    studentUid.isBlank() -> "Cloud fallback ready — waiting for Student"
+                    lastSeen > 0L && ageMs <= STUDENT_ONLINE_WINDOW_MS -> "Student online — cloud sync active"
+                    else -> "Student paired but offline — waiting for a fresh heartbeat"
+                }
+            )
         }
 
         messageListener = channel.collection("messages")
@@ -224,5 +233,6 @@ class ParentCloudGateway(
     companion object {
         private const val APP_NAME = "studylock-parent-native"
         private const val CHANNELS = "studylock_parent_channels"
+        private const val STUDENT_ONLINE_WINDOW_MS = 30_000L
     }
 }
