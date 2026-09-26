@@ -305,11 +305,11 @@ class ParentMainActivity : Activity(), ParentDirectServer.Listener, ParentCloudG
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
     companion object {
-        private val BG = Color.rgb(7, 17, 26)
-        private val CARD = Color.rgb(14, 31, 44)
-        private val BUTTON = Color.rgb(18, 56, 74)
-        private val ACCENT = Color.rgb(55, 221, 245)
-        private val MUTED = Color.rgb(170, 193, 207)
+        private val BG = Color.rgb(15, 10, 3)
+        private val CARD = Color.rgb(38, 25, 8)
+        private val BUTTON = Color.rgb(74, 44, 8)
+        private val ACCENT = Color.rgb(255, 177, 0)
+        private val MUTED = Color.rgb(226, 204, 160)
         private val OK = Color.rgb(101, 230, 167)
     }
 }
