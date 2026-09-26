@@ -70,6 +70,29 @@ class StudentDirectParentClient(
         return write(output, message)
     }
 
+    fun sendCommandAck(
+        requestId: String,
+        action: String,
+        ok: Boolean,
+        detail: String,
+        rawState: String
+    ): Boolean {
+        val output = writer ?: return false
+        val state = runCatching { JSONObject(rawState) }.getOrElse { JSONObject() }
+        return write(
+            output,
+            JSONObject()
+                .put("type", "command_ack")
+                .put("token", sessionToken)
+                .put("requestId", requestId)
+                .put("action", action)
+                .put("ok", ok)
+                .put("message", detail)
+                .put("at", System.currentTimeMillis())
+                .put("state", state)
+        )
+    }
+
     fun stateJson(): String = JSONObject()
         .put("connected", connected)
         .put("pairingCode", activeCode)
