@@ -180,7 +180,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            set -euxo pipefail
+            set -eux
             APK="release-artifacts/${{ matrix.apk }}"
             PACKAGE="${{ matrix.package }}"
             COMPONENT="${{ matrix.package }}/${{ matrix.activity }}"
