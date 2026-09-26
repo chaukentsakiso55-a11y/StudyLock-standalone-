@@ -5396,8 +5396,8 @@ RULES:
     render();
   }
 
-  function startSession(){
-    if(parentPassword === null){
+  function startSession(trustedParent = false){
+    if(parentPassword === null && trustedParent !== true){
       showSettingsView();
       openModal(settingsBackdrop);
       showToast('Set a parent password before starting a protected session.');
