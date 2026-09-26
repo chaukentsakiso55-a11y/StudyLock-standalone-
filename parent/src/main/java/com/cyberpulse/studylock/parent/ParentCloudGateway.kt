@@ -70,11 +70,14 @@ class ParentCloudGateway(
         start(code)
     }
 
-    fun sendCommand(action: String, payload: JSONObject = JSONObject()): Boolean {
+    fun sendCommand(
+        action: String,
+        payload: JSONObject = JSONObject(),
+        requestId: String = UUID.randomUUID().toString()
+    ): Boolean {
         val database = db ?: return false
         val uid = auth?.currentUser?.uid ?: return false
         val code = currentCode.takeIf { it.matches(Regex("\\d{6}")) } ?: return false
-        val requestId = UUID.randomUUID().toString()
         val channel = database.collection(CHANNELS).document(code)
 
         val update = mutableMapOf<String, Any>(
