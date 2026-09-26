@@ -180,17 +180,17 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            adb install "release-artifacts/${{ matrix.apk }}"
+            adb install "release-artifacts/build-artifacts/${{ matrix.apk }}"
             adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 3
             adb shell pidof "${{ matrix.package }}"
-            adb install -r "release-artifacts/${{ matrix.apk }}"
+            adb install -r "release-artifacts/build-artifacts/${{ matrix.apk }}"
             adb shell am force-stop "${{ matrix.package }}"
             adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 2
             adb shell pidof "${{ matrix.package }}"
             adb uninstall "${{ matrix.package }}"
-            adb install "release-artifacts/${{ matrix.apk }}"
+            adb install "release-artifacts/build-artifacts/${{ matrix.apk }}"
             adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
             sleep 2
             adb shell pidof "${{ matrix.package }}"
