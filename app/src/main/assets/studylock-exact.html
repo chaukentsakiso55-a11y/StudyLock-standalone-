@@ -6210,6 +6210,11 @@ RULES:
       totalSeconds: state.totalSeconds,
       remainingSeconds: state.remainingSeconds,
       blockedSitesCount: Array.isArray(blockedSites) ? blockedSites.length : 0,
+      blockedEntries: Array.isArray(blockedSites) ? blockedSites.map(site => site?.name?.trim()).filter(Boolean) : [],
+      protection: (() => {
+        try { return JSON.parse(window.StudyLockNative?.getNativeState?.() || '{}'); }
+        catch (_) { return {}; }
+      })(),
       todayMinutes: state.todayMinutes,
       sessionsCompleted: state.sessionsCompleted,
       streak: state.streak,
@@ -6670,6 +6675,8 @@ RULES:
       return blockedSites.map(site => site.name);
     },
     installParentTransport(publishFn, listenFn, pairFn){
+      try { persistentRelaySource?.close?.(); } catch (_) {}
+      persistentRelaySource = null;
       if (typeof publishFn === 'function') relayPublish = publishFn;
       if (typeof listenFn === 'function') startPersistentListener = listenFn;
       if (typeof pairFn === 'function') attemptPairing = pairFn;
