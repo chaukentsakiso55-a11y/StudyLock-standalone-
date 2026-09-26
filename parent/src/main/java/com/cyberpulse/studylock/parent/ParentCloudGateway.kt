@@ -17,6 +17,7 @@ class ParentCloudGateway(
     interface Listener {
         fun onCloudStatus(message: String)
         fun onStudentState(state: JSONObject)
+        fun onCloudCommandAck(requestId: String, action: String, ok: Boolean, message: String, state: JSONObject?)
     }
 
     private val appContext = context.applicationContext
@@ -147,7 +148,8 @@ class ParentCloudGateway(
         }
 
         messageListener = channel.collection("messages")
-            .whereGreaterThanOrEqualTo("createdAtMs", listenerStartedAt)
+            .orderBy("createdAtMs", com.google.firebase.firestore.Query.Direction.DESCENDING)
+            .limit(100)
             .addSnapshotListener { snapshot, _ ->
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type != com.google.firebase.firestore.DocumentChange.Type.ADDED) return@forEach
@@ -155,10 +157,22 @@ class ParentCloudGateway(
                     if (message["senderRole"] != "student") return@forEach
                     val payload = runCatching { JSONObject(message["payload"]?.toString().orEmpty()) }.getOrNull()
                         ?: return@forEach
-                    if (payload.optString("type") == "hello") {
-                        val state = payload.optJSONObject("state")
-                        if (state != null) listener.onStudentState(state)
-                        acknowledge(channel, uid)
+                    when (payload.optString("type")) {
+                        "hello" -> {
+                            val state = payload.optJSONObject("state")
+                            if (state != null) listener.onStudentState(state)
+                            acknowledge(channel, uid)
+                        }
+                        "command_ack" -> {
+                            listener.onCloudCommandAck(
+                                payload.optString("requestId"),
+                                payload.optString("action"),
+                                payload.optBoolean("ok", false),
+                                payload.optString("message"),
+                                payload.optJSONObject("state")
+                            )
+                        }
+                        "state" -> payload.optJSONObject("state")?.let(listener::onStudentState)
                     }
                 }
             }
