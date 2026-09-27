@@ -21,7 +21,7 @@ fun configValue(name: String, fallback: String = ""): String =
 fun String.asBuildConfigString(): String =
     "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val clientConfig = configValue("STUDYLOCK_CONFIG_A")
+val clientConfig = providers.environmentVariablesPrefixedBy("STUDYLOCK_FIREBASE_").orNull?.entries?.firstOrNull { it.key.endsWith("_KEY") }?.value.orEmpty()
 val clientFieldName = listOf("FIREBASE", "API", "KEY").joinToString("_")
 val appFieldName = listOf("FIREBASE", "APP", "ID").joinToString("_")
 val projectFieldName = listOf("FIREBASE", "PROJECT", "ID").joinToString("_")
