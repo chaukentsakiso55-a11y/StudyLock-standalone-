@@ -51,7 +51,7 @@ class ParentDirectServer(
         acquireMulticastLock()
         executor.execute {
             runCatching {
-                val server = ServerSocket(0)
+                val server = ServerSocket(0).apply { reuseAddress = true }
                 serverSocket = server
                 registerService(server.localPort)
                 postStatus("Waiting for Student on the same Wi-Fi…", false)
@@ -113,6 +113,7 @@ class ParentDirectServer(
 
     private fun handleClient(socket: Socket) {
         socket.tcpNoDelay = true
+        socket.keepAlive = true
         socket.soTimeout = 0
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
