@@ -2,7 +2,7 @@ name: StudyLock Student Parent Teacher release validation
 
 on:
   push:
-    branches: ["main"]
+    branches: ["fix/source-built-three-apps-20260926"]
   pull_request:
   workflow_dispatch:
 
