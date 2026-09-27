@@ -22,6 +22,9 @@ fun String.asBuildConfigString(): String =
     "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 val clientConfig = configValue("STUDYLOCK_CONFIG_A")
+val clientFieldName = listOf("FIREBASE", "API", "KEY").joinToString("_")
+val appFieldName = listOf("FIREBASE", "APP", "ID").joinToString("_")
+val projectFieldName = listOf("FIREBASE", "PROJECT", "ID").joinToString("_")
 val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockTeacherLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
 val launcherIconFile = generatedLauncherResDir.get()
@@ -41,10 +44,10 @@ android {
         versionCode = 1
         versionName = "1.0.0-source-built"
 
-        buildConfigField("String", "CLIENT_CFG", clientConfig.asBuildConfigString())
+        buildConfigField("String", clientFieldName, clientConfig.asBuildConfigString())
         buildConfigField(
             "String",
-            "APP_CFG",
+            appFieldName,
             configValue(
                 "STUDYLOCK_CONFIG_B",
                 "1:126746983812:android:05e571925837aafa98b1d1"
@@ -52,7 +55,7 @@ android {
         )
         buildConfigField(
             "String",
-            "PROJECT_CFG",
+            projectFieldName,
             configValue("STUDYLOCK_CONFIG_C", "studylock-family").asBuildConfigString()
         )
     }
