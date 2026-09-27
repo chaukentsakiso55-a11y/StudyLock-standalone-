@@ -21,7 +21,7 @@ fun configValue(name: String, fallback: String = ""): String =
 fun String.asBuildConfigString(): String =
     "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val clientConfig = configValue("STUDYLOCK_CONFIG_A")
+val clientConfig = configValue("STUDYLOCK_FIREBASE_API_KEY")
 
 val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockParentLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
