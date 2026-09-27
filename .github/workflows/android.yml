@@ -1,8 +1,8 @@
-name: StudyLock exact Android build
+name: StudyLock Student Parent Teacher release validation
 
 on:
   push:
-    branches: ["main"]
+    branches: ["fix/source-built-three-apps-20260926"]
   pull_request:
   workflow_dispatch:
 
@@ -48,6 +48,9 @@ jobs:
       - name: Verify WebView JavaScript
         run: |
           node --check app/src/main/assets/native-bridge.js
+          node --check app/src/main/assets/studylock-managed-ai.js
+          node --check app/src/main/assets/studylock-direct-parent.js
+          node --check app/src/main/assets/studylock-settings-autolock.js
           node --check app/src/main/assets/studylock-performance.js
           node --check app/src/main/assets/studylock-enhancements.js
           node --check app/src/main/assets/studylock-blocklist-policy.js
@@ -56,6 +59,8 @@ jobs:
           node --check app/src/main/assets/studylock-offline-dictionary.js
           node --check app/src/main/assets/studylock-offline-library-ui.js
           node --check app/src/main/assets/studylock-firebase-parent.js
+          node --check app/src/main/assets/studylock-firebase-rest-compat.js
+          node --check app/src/main/assets/studylock-teacher-classroom.js
           node --check app/src/main/assets/studylock-reference-sources.js
           node scripts/check-quiz-gate.js
           node scripts/check-weekly-blocklist-performance.js
@@ -65,18 +70,127 @@ jobs:
           node scripts/check-protection-onboarding.js
           node scripts/check-auto-ai-offline-dictionary.js
           node scripts/check-downloadable-offline-library.js
-      - name: Build and test
+          node scripts/check-parent-command-protocol.js
+          node scripts/check-cross-app-contracts.js
+      - name: Build Student, Parent, Teacher and Wear OS apps
         run: |
           chmod +x gradlew
-          ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
-      - name: Calculate artifact SHA-256
+          ./gradlew \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            :app:assembleDebug \
+            :parent:lintDebug \
+            :parent:assembleDebug \
+            :teacher:lintDebug \
+            :teacher:assembleDebug \
+            :wear:lintDebug \
+            :wear:assembleDebug \
+            --stacktrace
+      - name: Stage APK artifacts
         run: |
-          sha256sum studylock-exact.html app/src/main/assets/studylock-exact.html app/src/main/assets/studylock_dictionary.db app/build/outputs/apk/debug/app-debug.apk > SHA256SUMS-ci.txt
+          mkdir -p build-artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk build-artifacts/studylock-student.apk
+          cp parent/build/outputs/apk/debug/parent-debug.apk build-artifacts/studylock-parent.apk
+          cp teacher/build/outputs/apk/debug/teacher-debug.apk build-artifacts/studylock-teacher.apk
+          cp wear/build/outputs/apk/debug/wear-debug.apk build-artifacts/studylock-wear.apk
+          sha256sum \
+            studylock-exact.html \
+            app/src/main/assets/studylock-exact.html \
+            app/src/main/assets/studylock_dictionary.db \
+            build-artifacts/studylock-student.apk \
+            build-artifacts/studylock-parent.apk \
+            build-artifacts/studylock-teacher.apk \
+            build-artifacts/studylock-wear.apk \
+            > SHA256SUMS-ci.txt
+      - name: Verify APK package structure and signatures
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          test -x "$ZIPALIGN"
+          for apk in build-artifacts/studylock-student.apk build-artifacts/studylock-parent.apk build-artifacts/studylock-teacher.apk; do
+            "$APKSIGNER" verify --verbose "$apk"
+            "$ZIPALIGN" -c -P 16 -v 4 "$apk"
+            "$AAPT" dump badging "$apk" | head -20
+          done
+          "$AAPT" dump badging build-artifacts/studylock-student.apk | grep "package: name='com.studylock.student'"
+          "$AAPT" dump badging build-artifacts/studylock-parent.apk | grep "package: name='com.studylock.parent'"
+          "$AAPT" dump badging build-artifacts/studylock-teacher.apk | grep "package: name='com.studylock.teacher'"
+      - name: Package Android Studio source
+        run: |
+          zip -r build-artifacts/StudyLock-source-code.zip . \
+            -x '.git/*' \
+               '.gradle/*' \
+               '.dictionary-build/*' \
+               '.dictionary-cache/*' \
+               'build-artifacts/*' \
+               '*/build/*' \
+               '**/build/*' \
+               'functions/node_modules/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: StudyLock-exact-debug
+          name: StudyLock-All-3-APKs
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
+            build-artifacts/studylock-student.apk
+            build-artifacts/studylock-parent.apk
+            build-artifacts/studylock-teacher.apk
+            build-artifacts/studylock-wear.apk
+            build-artifacts/StudyLock-source-code.zip
             studylock-exact.html
             SHA256SUMS-ci.txt
           if-no-files-found: error
+
+  device-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Student
+            apk: studylock-student.apk
+            package: com.studylock.student
+            activity: com.cyberpulse.studylock.MainActivity
+          - name: Parent
+            apk: studylock-parent.apk
+            package: com.studylock.parent
+            activity: com.cyberpulse.studylock.parent.ParentMainActivity
+          - name: Teacher
+            apk: studylock-teacher.apk
+            package: com.studylock.teacher
+            activity: com.cyberpulse.studylock.teacher.TeacherMainActivity
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: StudyLock-All-3-APKs
+          path: release-artifacts
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Fresh install, launch, upgrade and reinstall ${{ matrix.name }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            adb install "release-artifacts/build-artifacts/${{ matrix.apk }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
+            sleep 3
+            adb shell pidof "${{ matrix.package }}"
+            adb install -r "release-artifacts/build-artifacts/${{ matrix.apk }}"
+            adb shell am force-stop "${{ matrix.package }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
+            sleep 2
+            adb shell pidof "${{ matrix.package }}"
+            adb uninstall "${{ matrix.package }}"
+            adb install "release-artifacts/build-artifacts/${{ matrix.apk }}"
+            adb shell am start -W -n "${{ matrix.package }}/${{ matrix.activity }}"
+            sleep 2
+            adb shell pidof "${{ matrix.package }}"

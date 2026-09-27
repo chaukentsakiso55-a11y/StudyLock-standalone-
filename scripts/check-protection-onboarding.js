@@ -37,8 +37,8 @@ for (const token of requiredFlowTokens) {
   if (!app.includes(token)) throw new Error(`Missing simple Allow wizard token: ${token}`);
 }
 
-if (!gradle.includes('versionCode = 19') || !gradle.includes('1.0.17-app-picker-library-pack-fix')) {
-  throw new Error('StudyLock 1.0.17 version bump is missing.');
+if (!gradle.includes('versionCode = 20') || !gradle.includes('1.0.18-widget-wear')) {
+  throw new Error('StudyLock 1.0.18 version bump is missing.');
 }
 
 if (app.includes('WRITE_SECURE_SETTINGS') || app.includes('pm grant') || app.includes('device_policy set-active-admin')) {
@@ -49,4 +49,4 @@ if (app.includes('.setPositiveButton("Start setup")')) {
   throw new Error('The old Start setup confirmation should not remain in the simple Allow wizard.');
 }
 
-console.log('Simple Allow protection wizard checks passed.');
+console.log('Simple Allow protection wizard checks passed for StudyLock 1.0.18.');

@@ -27,9 +27,7 @@
   }
 
   const ready = (async () => {
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js');
-    await loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js');
+    if (!window.firebase?.initializeApp) await loadScript('studylock-firebase-rest-compat.js');
     const config = window.__STUDYLOCK_FIREBASE_PARENT_CONFIG;
     if (!config?.apiKey || !config?.projectId) throw new Error('Firebase parent sync config missing');
     app = window.firebase.apps.find(item => item.name === APP_NAME) || window.firebase.initializeApp(config, APP_NAME);
@@ -78,19 +76,17 @@
 
     if (data.type === 'hello') {
       const now = Date.now();
-      await db.runTransaction(async transaction => {
-        const snapshot = await transaction.get(channel);
-        if (!snapshot.exists) throw new Error('Pairing code not found');
-        const channelData = snapshot.data() || {};
-        if (channelData.expiresAtMs && channelData.expiresAtMs < now) throw new Error('Pairing code expired');
-        if (channelData.studentUid && channelData.studentUid !== currentUid) throw new Error('Pairing code already connected');
-        transaction.set(channel, {
-          studentUid: currentUid,
-          connected: true,
-          studentOnline: true,
-          lastStudentSeenMs: now
-        }, { merge: true });
-      });
+      const snapshot = await channel.get();
+      if (!snapshot.exists) throw new Error('Pairing code not found');
+      const channelData = snapshot.data() || {};
+      if (channelData.expiresAtMs && channelData.expiresAtMs < now) throw new Error('Pairing code expired');
+      if (channelData.studentUid && channelData.studentUid !== currentUid) throw new Error('Pairing code already connected');
+      await channel.set({
+        studentUid: currentUid,
+        connected: true,
+        studentOnline: true,
+        lastStudentSeenMs: now
+      }, { merge: true });
       if (data.state) {
         await channel.set({ studentState: toPlain(data.state), studentOnline: true, lastStudentSeenMs: Date.now() }, { merge: true });
       }
@@ -133,7 +129,7 @@
   function startStudy(minutes, message) {
     if (focusActive()) return;
     selectMinutes(minutes);
-    if (typeof startSession === 'function') startSession();
+    if (typeof startSession === 'function') startSession(true);
     window.StudyLockNativeHooks?.showToast?.(message || 'Focus session started from the parent dashboard.');
   }
 
@@ -195,15 +191,23 @@
     const code = codeFromTopic(topic);
     if (!code) return;
     const channel = db.collection(CHANNELS).doc(code);
-    const since = Date.now() - 1500;
-    messageUnsubscribe = channel.collection('messages').where('createdAtMs', '>=', since).onSnapshot(snapshot => {
+    messageUnsubscribe = channel.collection('messages')
+      .orderBy('createdAtMs', 'desc')
+      .limit(100)
+      .onSnapshot(snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type !== 'added') return;
         const data = change.doc.data() || {};
         if (data.senderRole !== 'parent') return;
         let message = {};
         try { message = JSON.parse(data.payload || '{}'); } catch (_) {}
-        if (message.type === 'cmd' && message.action === 'end') endStudy();
+        if (message.type === 'cmd') {
+          if (window.StudyLockDirectParent?.applyCommand) {
+            window.StudyLockDirectParent.applyCommand(message);
+          } else if (message.action === 'end' || message.action === 'end_focus') {
+            endStudy();
+          }
+        }
       });
     });
     channelUnsubscribe = channel.onSnapshot(snapshot => {
@@ -228,7 +232,10 @@
       await ready;
       const channel = db.collection(CHANNELS).doc(code);
       const startedAt = Date.now() - 1000;
-      await firebaseRelayPublish(topic, { type: 'hello', state: snapshotState() });
+      await firebaseRelayPublish(topic, {
+        type: 'hello',
+        state: window.StudyLockParentControl?.snapshot?.() || {}
+      });
 
       let settled = false;
       const timeout = setTimeout(() => {
@@ -251,14 +258,11 @@
           settled = true;
           clearTimeout(timeout);
           unsubscribe();
-          pairedTopic = topic;
-          localStorage.setItem(RELAY_TOPIC_KEY, pairedTopic);
           syncConnectPasskeyBtn.disabled = false;
           syncConnectPasskeyBtn.textContent = 'Connect';
-          renderSyncSection();
+          window.StudyLockParentControl?.completePairing?.(topic);
           firebasePersistentListener(topic);
-          startHeartbeat();
-          showToast('Connected to parent dashboard ✓');
+          showToast('Connected to StudyLock Parent ✓');
         });
       }, error => {
         if (settled) return;
@@ -279,27 +283,36 @@
     }
   }
 
+  async function sendToParent(value) {
+    const topic = window.StudyLockParentControl?.getPairedTopic?.() || '';
+    if (!topic) return false;
+    await firebaseRelayPublish(topic, value);
+    return true;
+  }
+
   ready.then(() => {
-    relayPublish = function firebasePublishReplacement(topic, value) {
+    const publish = function firebasePublishReplacement(topic, value) {
       firebaseRelayPublish(topic, value).catch(error => {
         console.warn('StudyLock Firebase parent publish failed', error);
       });
     };
-    startPersistentListener = function firebaseListenerReplacement(topic) {
+    const listen = function firebaseListenerReplacement(topic) {
       firebasePersistentListener(topic).catch(error => console.warn('StudyLock Firebase parent listener failed', error));
     };
-    attemptPairing = firebaseAttemptPairing;
+    window.StudyLockParentControl?.installParentTransport?.(publish, listen, firebaseAttemptPairing);
 
-    if (pairedTopic) {
-      try { persistentRelaySource?.close?.(); } catch (_) {}
-      firebasePersistentListener(pairedTopic);
-      startHeartbeat();
-    }
+    const paired = window.StudyLockParentControl?.getPairedTopic?.() || '';
+    if (paired) firebasePersistentListener(paired);
     maybeApplyAutoStudy();
   }).catch(error => {
     console.warn('StudyLock Firebase parent controls unavailable', error);
   });
 
   setInterval(maybeApplyAutoStudy, 30000);
-  window.studyLockFirebaseParent = { ready, maybeApplyAutoStudy };
+  window.studyLockFirebaseParent = {
+    ready,
+    maybeApplyAutoStudy,
+    attemptPairing: firebaseAttemptPairing,
+    sendToParent
+  };
 })();

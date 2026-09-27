@@ -16,3 +16,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "StudyLock"
 include(":app")
+include(":parent")
+include(":wear")
+include(":teacher")

@@ -62,6 +62,10 @@ object FocusStateStore {
             .putStringSet(BLOCKED_PACKAGES, blockedPackages)
             .putStringSet(BLOCKED_ENTRIES, blockedEntries)
             .apply()
+
+        val appContext = context.applicationContext
+        StudyLockWidgetProvider.refreshAll(appContext)
+        WearSync.pushFocusState(appContext)
     }
 
     fun isActive(context: Context): Boolean {

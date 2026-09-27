@@ -5396,8 +5396,8 @@ RULES:
     render();
   }
 
-  function startSession(){
-    if(parentPassword === null){
+  function startSession(trustedParent = false){
+    if(parentPassword === null && trustedParent !== true){
       showSettingsView();
       openModal(settingsBackdrop);
       showToast('Set a parent password before starting a protected session.');
@@ -6210,6 +6210,11 @@ RULES:
       totalSeconds: state.totalSeconds,
       remainingSeconds: state.remainingSeconds,
       blockedSitesCount: Array.isArray(blockedSites) ? blockedSites.length : 0,
+      blockedEntries: Array.isArray(blockedSites) ? blockedSites.map(site => site?.name?.trim()).filter(Boolean) : [],
+      protection: (() => {
+        try { return JSON.parse(window.StudyLockNative?.getNativeState?.() || '{}'); }
+        catch (_) { return {}; }
+      })(),
       todayMinutes: state.todayMinutes,
       sessionsCompleted: state.sessionsCompleted,
       streak: state.streak,
@@ -6612,6 +6617,79 @@ RULES:
   endSessionPasswordInput.addEventListener('keydown', (e) => {
     if(e.key === 'Enter') endSessionConfirmBtn.click();
   });
+
+  window.StudyLockParentControl = {
+    snapshot(){
+      let protection = {};
+      try { protection = JSON.parse(window.StudyLockNative?.getNativeState?.() || '{}'); } catch (_) {}
+      return Object.assign({}, snapshotState(), {
+        focusActive: state.isLocked,
+        focusPaused: state.isPaused,
+        blockedEntries: blockedSites.map(site => site?.name?.trim()).filter(Boolean),
+        protection
+      });
+    },
+    startFocus(minutes, subject){
+      const wanted = Math.max(25, Math.min(300, Number(minutes || 25)));
+      const buttons = Array.from(presetsWrap.querySelectorAll('.preset-btn'));
+      let selected = buttons.find(button => Number(button.dataset.mins || 0) === wanted);
+      if (!selected && buttons.length) {
+        selected = buttons.reduce((best, button) => {
+          const a = Math.abs(Number(best.dataset.mins || 25) - wanted);
+          const b = Math.abs(Number(button.dataset.mins || 25) - wanted);
+          return b < a ? button : best;
+        }, buttons[0]);
+      }
+      selected?.click();
+      try { localStorage.setItem('studylock_parent_subject', String(subject || '').trim()); } catch (_) {}
+      if (!state.isLocked) startSession(true);
+      return state.isLocked;
+    },
+    pauseFocus(){
+      if (!state.isLocked) return false;
+      if (!state.isPaused) togglePause();
+      return state.isPaused;
+    },
+    resumeFocus(){
+      if (!state.isLocked) return false;
+      if (state.isPaused) togglePause();
+      return !state.isPaused;
+    },
+    endFocus(){
+      if (!state.isLocked) return true;
+      endSessionEarly();
+      return !state.isLocked;
+    },
+    setBlocked(entries){
+      const names = (Array.isArray(entries) ? entries : [])
+        .map(item => String(item || '').trim())
+        .filter(Boolean);
+      const next = names.map(name => ({ name, icon: iconFor(name) }));
+      blockedSites.splice(0, blockedSites.length, ...next);
+      saveBlockedSites();
+      renderSites();
+      renderSettingsSiteList();
+      document.dispatchEvent(new CustomEvent('studylock:blocklist-changed'));
+      window.StudyLockNativePerf?.flushFocus?.();
+      window.notifyParentDashboard?.();
+      return blockedSites.map(site => site.name);
+    },
+    installParentTransport(publishFn, listenFn, pairFn){
+      try { persistentRelaySource?.close?.(); } catch (_) {}
+      persistentRelaySource = null;
+      if (typeof publishFn === 'function') relayPublish = publishFn;
+      if (typeof listenFn === 'function') startPersistentListener = listenFn;
+      if (typeof pairFn === 'function') attemptPairing = pairFn;
+    },
+    completePairing(topic){
+      storePairing(topic);
+      renderSyncSection();
+      startHeartbeat();
+    },
+    getPairedTopic(){ return pairedTopic || ''; },
+    refreshPairingUi(){ renderSyncSection(); },
+    pushParentState(){ pushStateToParent(); }
+  };
 
   // ---------- Init ----------
   renderSites();

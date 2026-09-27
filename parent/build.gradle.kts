@@ -19,41 +19,35 @@ fun configValue(name: String, fallback: String = ""): String =
     ).firstOrNull { !it.isNullOrBlank() } ?: fallback
 
 fun String.asBuildConfigString(): String =
-    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockLauncherRes")
+val clientConfig = configValue("STUDYLOCK_FIREBASE_API_KEY")
+
+val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockParentLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
 val launcherIconFile = generatedLauncherResDir.get()
     .file("drawable-nodpi/studylock_icon_proper.webp")
     .asFile
 launcherIconFile.parentFile.mkdirs()
-launcherIconFile.writeBytes(
-    Base64.getDecoder().decode(launcherIconSource.readText().trim())
-)
+launcherIconFile.writeBytes(Base64.getDecoder().decode(launcherIconSource.readText().trim()))
 
 android {
-    namespace = "com.cyberpulse.studylock"
+    namespace = "com.cyberpulse.studylock.parent"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.studylock.student"
+        applicationId = "com.studylock.parent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "1.0.18-widget-wear"
+        versionCode = 21
+        versionName = "1.1.0-parent"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        buildConfigField(
-            "String",
-            "FIREBASE_API_KEY",
-            configValue("STUDYLOCK_FIREBASE_API_KEY").asBuildConfigString()
-        )
+        buildConfigField("String", "FIREBASE_API_KEY", clientConfig.asBuildConfigString())
         buildConfigField(
             "String",
             "FIREBASE_APP_ID",
             configValue(
-                "STUDYLOCK_FIREBASE_APP_ID",
+                "STUDYLOCK_PARENT_FIREBASE_APP_ID",
                 "1:126746983812:android:05e571925837aafa98b1d1"
             ).asBuildConfigString()
         )
@@ -62,34 +56,14 @@ android {
             "FIREBASE_PROJECT_ID",
             configValue("STUDYLOCK_FIREBASE_PROJECT_ID", "studylock-family").asBuildConfigString()
         )
-        buildConfigField(
-            "String",
-            "FIREBASE_STORAGE_BUCKET",
-            configValue(
-                "STUDYLOCK_FIREBASE_STORAGE_BUCKET",
-                "studylock-family.firebasestorage.app"
-            ).asBuildConfigString()
-        )
-        buildConfigField("int", "DICTIONARY_ASSET_VERSION", "1")
-        buildConfigField(
-            "String",
-            "OFFLINE_LIBRARY_STORAGE_PATH",
-            configValue(
-                "STUDYLOCK_OFFLINE_LIBRARY_STORAGE_PATH",
-                "offline-tutor-library/studylock-reference-library-v1.db"
-            ).asBuildConfigString()
-        )
-        buildConfigField("int", "OFFLINE_LIBRARY_VERSION", "1")
     }
+
     sourceSets["main"].res.srcDir(generatedLauncherResDir)
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -101,12 +75,7 @@ android {
     buildFeatures {
         buildConfig = true
     }
-
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
 }
-
 
 kotlin {
     compilerOptions {
@@ -117,19 +86,9 @@ kotlin {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
-    implementation("androidx.fragment:fragment-ktx:1.8.6")
-    implementation("androidx.webkit:webkit:1.14.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    implementation("com.google.android.gms:play-services-wearable:20.0.1")
 
     implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-functions")
-    implementation("com.google.firebase:firebase-ai")
-    implementation("com.google.firebase:firebase-storage")
-    implementation("com.google.firebase:firebase-appcheck-playintegrity")
-    implementation("com.google.firebase:firebase-appcheck-debug")
-
-    testImplementation("junit:junit:4.13.2")
 }
