@@ -1,4 +1,3 @@
-import java.security.MessageDigest
 import java.util.Base64
 import java.util.Properties
 
@@ -20,26 +19,9 @@ fun configValue(name: String, fallback: String = ""): String =
     ).firstOrNull { !it.isNullOrBlank() } ?: fallback
 
 fun String.asBuildConfigString(): String =
-    "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
-val generatedPrivateAiAssetsDir = layout.buildDirectory.dir("generated/privateAiAssets")
-val prepareStudyLockParentPrivateAiKey by tasks.registering {
-    val outputFile = generatedPrivateAiAssetsDir.map { it.file("studylock-private-ai-key.txt") }
-    outputs.file(outputFile)
-    doLast {
-        val encrypted = Base64.getDecoder().decode(
-            "5fmbObGszd5BWMbYrzNmQtKKNiNCAQoTM+NZLDg56EPKmdoz58vOxSBXhZysBj4hy61QIVY="
-        )
-        val mask = MessageDigest.getInstance("SHA-256")
-            .digest("StudyLock-CyberPulse-Private-AI-v1".toByteArray(Charsets.UTF_8))
-        val plain = ByteArray(encrypted.size) { index ->
-            (encrypted[index].toInt() xor mask[index % mask.size].toInt()).toByte()
-        }
-        val destination = outputFile.get().asFile
-        destination.parentFile.mkdirs()
-        destination.writeBytes(plain)
-    }
-}
+val clientConfig = configValue("STUDYLOCK_CONFIG_A")
 
 val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockParentLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
@@ -60,14 +42,7 @@ android {
         versionCode = 21
         versionName = "1.1.0-parent"
 
-        buildConfigField(
-            "String",
-            "FIREBASE_API_KEY",
-            configValue(
-                "STUDYLOCK_FIREBASE_API_KEY",
-                "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
-            ).asBuildConfigString()
-        )
+        buildConfigField("String", "FIREBASE_API_KEY", clientConfig.asBuildConfigString())
         buildConfigField(
             "String",
             "FIREBASE_APP_ID",
@@ -83,7 +58,6 @@ android {
         )
     }
 
-    sourceSets["main"].assets.srcDir(generatedPrivateAiAssetsDir)
     sourceSets["main"].res.srcDir(generatedLauncherResDir)
 
     buildTypes {
@@ -101,12 +75,6 @@ android {
     buildFeatures {
         buildConfig = true
     }
-}
-
-tasks.matching {
-    it.name.contains("Assets", ignoreCase = true) || it.name.contains("Lint", ignoreCase = true)
-}.configureEach {
-    dependsOn(prepareStudyLockParentPrivateAiKey)
 }
 
 kotlin {
