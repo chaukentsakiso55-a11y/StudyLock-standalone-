@@ -2,7 +2,7 @@ name: StudyLock Student Parent Teacher release validation
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "fix/real-parent-wireless-20260927"]
   pull_request:
   workflow_dispatch:
 
@@ -118,6 +118,15 @@ jobs:
           "$AAPT" dump badging build-artifacts/studylock-student.apk | grep "package: name='com.studylock.student'"
           "$AAPT" dump badging build-artifacts/studylock-parent.apk | grep "package: name='com.studylock.parent'"
           "$AAPT" dump badging build-artifacts/studylock-teacher.apk | grep "package: name='com.studylock.teacher'"
+          "$AAPT" dump xmltree build-artifacts/studylock-student.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.MainActivity"
+          "$AAPT" dump xmltree build-artifacts/studylock-parent.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.parent.ParentMainActivity"
+          "$AAPT" dump xmltree build-artifacts/studylock-teacher.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.teacher.TeacherMainActivity"
+          STUDENT_DEX_SHA="$(unzip -p build-artifacts/studylock-student.apk classes.dex | sha256sum | cut -d' ' -f1)"
+          PARENT_DEX_SHA="$(unzip -p build-artifacts/studylock-parent.apk classes.dex | sha256sum | cut -d' ' -f1)"
+          TEACHER_DEX_SHA="$(unzip -p build-artifacts/studylock-teacher.apk classes.dex | sha256sum | cut -d' ' -f1)"
+          test "$STUDENT_DEX_SHA" != "$PARENT_DEX_SHA"
+          test "$STUDENT_DEX_SHA" != "$TEACHER_DEX_SHA"
+          test "$PARENT_DEX_SHA" != "$TEACHER_DEX_SHA"
       - name: Package Android Studio source
         run: |
           zip -r build-artifacts/StudyLock-source-code.zip . \
@@ -131,7 +140,7 @@ jobs:
                'functions/node_modules/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: StudyLock-student-parent
+          name: StudyLock-real-student-parent-teacher
           path: |
             build-artifacts/studylock-student.apk
             build-artifacts/studylock-parent.apk
@@ -164,7 +173,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: StudyLock-student-parent
+          name: StudyLock-real-student-parent-teacher
           path: release-artifacts
       - name: Enable KVM
         run: |
