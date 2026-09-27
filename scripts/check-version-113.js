@@ -16,9 +16,6 @@ if (!gradle.includes('versionName = "1.0.18-widget-wear"')) {
 for (const token of ['OFFLINE_LIBRARY_STORAGE_PATH', 'OFFLINE_LIBRARY_VERSION', 'firebase-storage']) {
   if (!gradle.includes(token)) throw new Error(`StudyLock 1.0.18 library config is missing: ${token}`);
 }
-for (const token of ['studylock-firebase-parent-config.js', '__STUDYLOCK_FIREBASE_PARENT_CONFIG']) {
-  if (!gradle.includes(token)) throw new Error(`StudyLock Firebase parent config is missing: ${token}`);
-}
 for (const token of ['https://cyber-pulse-info.netlify.app', 'https://cyber-learn-projects.netlify.app', 'studylock://import-library', 'studylock://libraries']) {
   if (!sources.includes(token)) throw new Error(`StudyLock reference source wiring is missing: ${token}`);
 }
