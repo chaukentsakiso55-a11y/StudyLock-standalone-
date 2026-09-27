@@ -38,12 +38,15 @@ class StudentDirectParentClient(
     @Volatile private var activeCode = ""
     @Volatile private var sessionToken = ""
     @Volatile private var reconnectEnabled = true
+    @Volatile private var pairingAwaitingResult = false
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
     fun pair(code: String) {
         reconnectEnabled = true
+        pairingAwaitingResult = true
         mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.removeCallbacks(discoveryTimeoutRunnable)
         val normalized = code.filter(Char::isDigit).take(6)
         if (!normalized.matches(Regex("\\d{6}"))) {
             postPairing(false, "Enter the 6-digit code from StudyLock Parent.")
@@ -54,6 +57,7 @@ class StudentDirectParentClient(
         saveCode(normalized)
         acquireMulticastLock()
         startDiscovery(normalized)
+        mainHandler.postDelayed(discoveryTimeoutRunnable, DISCOVERY_TIMEOUT_MS)
     }
 
     fun reconnectSaved() {
@@ -104,6 +108,8 @@ class StudentDirectParentClient(
 
     fun disconnect(clearSaved: Boolean = true) {
         mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.removeCallbacks(discoveryTimeoutRunnable)
+        pairingAwaitingResult = false
         if (clearSaved) reconnectEnabled = false
         stopDiscovery()
         connected = false
@@ -126,6 +132,13 @@ class StudentDirectParentClient(
         mainHandler.removeCallbacks(reconnectRunnable)
         disconnect(clearSaved = false)
         executor.shutdownNow()
+    }
+
+    private val discoveryTimeoutRunnable = Runnable {
+        if (!pairingAwaitingResult || connected) return@Runnable
+        pairingAwaitingResult = false
+        stopDiscovery()
+        postPairing(false, "Parent was not found on local Wi-Fi. Trying cloud fallback…")
     }
 
     private val reconnectRunnable = Runnable {
@@ -165,7 +178,11 @@ class StudentDirectParentClient(
 
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 stopDiscovery()
-                postPairing(false, "Direct pairing could not start ($errorCode). Cloud pairing can still be used.")
+                if (pairingAwaitingResult) {
+                    pairingAwaitingResult = false
+                    mainHandler.removeCallbacks(discoveryTimeoutRunnable)
+                    postPairing(false, "Direct pairing could not start ($errorCode). Cloud pairing can still be used.")
+                }
             }
 
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) = Unit
@@ -183,6 +200,8 @@ class StudentDirectParentClient(
     private fun resolveAndConnect(info: NsdServiceInfo, code: String) {
         nsdManager.resolveService(info, object : NsdManager.ResolveListener {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                pairingAwaitingResult = false
+                mainHandler.removeCallbacks(discoveryTimeoutRunnable)
                 postPairing(false, "Found StudyLock Parent but could not resolve it ($errorCode).")
             }
 
@@ -223,6 +242,8 @@ class StudentDirectParentClient(
                 val message = runCatching { JSONObject(line) }.getOrNull() ?: continue
                 when (message.optString("type")) {
                     "ack" -> {
+                        pairingAwaitingResult = false
+                        mainHandler.removeCallbacks(discoveryTimeoutRunnable)
                         sessionToken = message.optString("token")
                         connected = true
                         postPairing(true, message.optString("message", "Connected directly to StudyLock Parent ✓"))
@@ -233,7 +254,11 @@ class StudentDirectParentClient(
                         ParentCommandStore.enqueue(appContext, message)
                         mainHandler.post { listener.onCommand(message) }
                     }
-                    "error" -> postPairing(false, message.optString("message", "Pairing rejected"))
+                    "error" -> {
+                        pairingAwaitingResult = false
+                        mainHandler.removeCallbacks(discoveryTimeoutRunnable)
+                        postPairing(false, message.optString("message", "Pairing rejected"))
+                    }
                 }
             }
         } catch (error: Throwable) {
@@ -306,6 +331,7 @@ class StudentDirectParentClient(
         private const val PREFS = "studylock_direct_parent"
         private const val KEY_CODE = "pairing_code"
         private const val CONNECT_TIMEOUT_MS = 8_000
+        private const val DISCOVERY_TIMEOUT_MS = 6_000L
         private const val RECONNECT_DELAY_MS = 2_000L
     }
 }
