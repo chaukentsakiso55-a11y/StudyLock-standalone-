@@ -37,10 +37,13 @@ class StudentDirectParentClient(
     @Volatile private var connected = false
     @Volatile private var activeCode = ""
     @Volatile private var sessionToken = ""
+    @Volatile private var reconnectEnabled = true
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
     fun pair(code: String) {
+        reconnectEnabled = true
+        mainHandler.removeCallbacks(reconnectRunnable)
         val normalized = code.filter(Char::isDigit).take(6)
         if (!normalized.matches(Regex("\\d{6}"))) {
             postPairing(false, "Enter the 6-digit code from StudyLock Parent.")
@@ -100,6 +103,8 @@ class StudentDirectParentClient(
         .toString()
 
     fun disconnect(clearSaved: Boolean = true) {
+        mainHandler.removeCallbacks(reconnectRunnable)
+        if (clearSaved) reconnectEnabled = false
         stopDiscovery()
         connected = false
         sessionToken = ""
@@ -117,18 +122,35 @@ class StudentDirectParentClient(
     }
 
     fun close() {
+        reconnectEnabled = false
+        mainHandler.removeCallbacks(reconnectRunnable)
         disconnect(clearSaved = false)
         executor.shutdownNow()
     }
 
+    private val reconnectRunnable = Runnable {
+        val code = activeCode
+        if (reconnectEnabled && !connected && discoveryListener == null && code.matches(Regex("\\d{6}"))) {
+            acquireMulticastLock()
+            startDiscovery(code)
+        }
+    }
+
+    private fun scheduleReconnect() {
+        if (!reconnectEnabled || activeCode.isBlank()) return
+        mainHandler.removeCallbacks(reconnectRunnable)
+        mainHandler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MS)
+    }
+
     private fun startDiscovery(code: String) {
+        if (connected || discoveryListener != null) return
         postConnection(false, "Searching for StudyLock Parent on this Wi-Fi…")
         val listener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(serviceType: String) = Unit
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 val expected = ParentService.SERVICE_PREFIX + code
-                if (!serviceInfo.serviceName.equals(expected, ignoreCase = true)) return
+                if (!serviceInfo.serviceName.startsWith(expected, ignoreCase = true)) return
                 stopDiscovery()
                 resolveAndConnect(serviceInfo, code)
             }
@@ -182,6 +204,7 @@ class StudentDirectParentClient(
         try {
             val newSocket = Socket()
             newSocket.tcpNoDelay = true
+            newSocket.keepAlive = true
             newSocket.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
             val output = BufferedWriter(OutputStreamWriter(newSocket.getOutputStream(), Charsets.UTF_8))
             val input = BufferedReader(InputStreamReader(newSocket.getInputStream(), Charsets.UTF_8))
@@ -222,7 +245,12 @@ class StudentDirectParentClient(
             sessionToken = ""
             runCatching { socket?.close() }
             socket = null
-            if (wasConnected) postConnection(false, "Direct Parent connection lost; cloud fallback can continue.")
+            if (wasConnected) {
+                postConnection(false, "Direct Parent connection lost; reconnecting automatically…")
+                scheduleReconnect()
+            } else if (reconnectEnabled) {
+                scheduleReconnect()
+            }
         }
     }
 
@@ -278,5 +306,6 @@ class StudentDirectParentClient(
         private const val PREFS = "studylock_direct_parent"
         private const val KEY_CODE = "pairing_code"
         private const val CONNECT_TIMEOUT_MS = 8_000
+        private const val RECONNECT_DELAY_MS = 2_000L
     }
 }
