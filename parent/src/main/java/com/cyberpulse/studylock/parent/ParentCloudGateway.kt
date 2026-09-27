@@ -1,6 +1,8 @@
 package com.cyberpulse.studylock.parent
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
@@ -21,6 +23,7 @@ class ParentCloudGateway(
     }
 
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val configured = BuildConfig.FIREBASE_API_KEY.isNotBlank() &&
         BuildConfig.FIREBASE_APP_ID.isNotBlank() &&
         BuildConfig.FIREBASE_PROJECT_ID.isNotBlank()
@@ -41,8 +44,17 @@ class ParentCloudGateway(
     private var messageListener: ListenerRegistration? = null
     private var currentCode = ""
     private var listenerStartedAt = 0L
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            refreshPresence()
+            if (currentCode.isNotBlank()) {
+                mainHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+            }
+        }
+    }
 
     fun start(code: String) {
+        mainHandler.removeCallbacks(heartbeatRunnable)
         currentCode = code
         if (!configured || auth == null || db == null) {
             listener.onCloudStatus("Cloud fallback is not configured; direct Wi-Fi control still works.")
@@ -66,6 +78,7 @@ class ParentCloudGateway(
     }
 
     fun switchCode(code: String) {
+        mainHandler.removeCallbacks(heartbeatRunnable)
         stopListeners()
         start(code)
     }
@@ -79,10 +92,12 @@ class ParentCloudGateway(
         val uid = auth?.currentUser?.uid ?: return false
         val code = currentCode.takeIf { it.matches(Regex("\\d{6}")) } ?: return false
         val channel = database.collection(CHANNELS).document(code)
+        val now = System.currentTimeMillis()
 
         val update = mutableMapOf<String, Any>(
             "parentOnline" to true,
-            "lastParentSeenMs" to System.currentTimeMillis()
+            "lastParentSeenMs" to now,
+            "expiresAtMs" to now + CHANNEL_TTL_MS
         )
         when (action) {
             "start_focus" -> {
@@ -96,26 +111,42 @@ class ParentCloudGateway(
                 update["autoStudyStartMinuteOfDay"] = payload.optInt("startMinuteOfDay", -1)
             }
         }
-        channel.set(update, com.google.firebase.firestore.SetOptions.merge())
 
         val messagePayload = JSONObject()
             .put("type", "cmd")
             .put("action", action)
             .put("requestId", requestId)
             .put("payload", payload)
-        channel.collection("messages").add(
-            mapOf(
-                "senderUid" to uid,
-                "senderRole" to "parent",
-                "type" to "cmd",
-                "payload" to messagePayload.toString(),
-                "createdAtMs" to System.currentTimeMillis()
+
+        val messageRef = channel.collection("messages").document()
+        database.batch()
+            .set(channel, update, com.google.firebase.firestore.SetOptions.merge())
+            .set(
+                messageRef,
+                mapOf(
+                    "senderUid" to uid,
+                    "senderRole" to "parent",
+                    "type" to "cmd",
+                    "payload" to messagePayload.toString(),
+                    "createdAtMs" to now
+                )
             )
-        )
+            .commit()
+            .addOnFailureListener { error ->
+                listener.onCloudStatus("Cloud command failed: ${error.localizedMessage ?: "write error"}")
+                listener.onCloudCommandAck(
+                    requestId,
+                    action,
+                    false,
+                    error.localizedMessage ?: "Cloud command write failed",
+                    null
+                )
+            }
         return true
     }
 
     fun close() {
+        mainHandler.removeCallbacks(heartbeatRunnable)
         stopListeners()
         currentCode = ""
     }
@@ -124,19 +155,27 @@ class ParentCloudGateway(
         val database = db ?: return
         listenerStartedAt = System.currentTimeMillis() - 1_000L
         val channel = database.collection(CHANNELS).document(code)
-        channel.set(
-            mapOf(
+        channel.get().addOnSuccessListener { existing ->
+            val now = System.currentTimeMillis()
+            val registration = hashMapOf<String, Any?>(
                 "parentUid" to uid,
                 "connected" to false,
                 "parentOnline" to true,
-                "lastParentSeenMs" to System.currentTimeMillis(),
-                "expiresAtMs" to System.currentTimeMillis() + 30 * 60 * 1000L
-            ),
-            com.google.firebase.firestore.SetOptions.merge()
-        ).addOnSuccessListener {
-            listener.onCloudStatus("Cloud fallback ready")
+                "lastParentSeenMs" to now,
+                "expiresAtMs" to now + CHANNEL_TTL_MS
+            )
+            if (!existing.exists()) registration["studentUid"] = null
+            channel.set(registration, com.google.firebase.firestore.SetOptions.merge())
+                .addOnSuccessListener {
+                    listener.onCloudStatus("Cloud fallback ready")
+                    mainHandler.removeCallbacks(heartbeatRunnable)
+                    mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS)
+                }
+                .addOnFailureListener { error ->
+                    listener.onCloudStatus("Cloud fallback unavailable: ${error.localizedMessage ?: "write error"}")
+                }
         }.addOnFailureListener { error ->
-            listener.onCloudStatus("Cloud fallback unavailable: ${error.localizedMessage ?: "write error"}")
+            listener.onCloudStatus("Cloud fallback unavailable: ${error.localizedMessage ?: "read error"}")
         }
 
         channelListener = channel.addSnapshotListener { snapshot, error ->
@@ -166,6 +205,8 @@ class ParentCloudGateway(
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type != com.google.firebase.firestore.DocumentChange.Type.ADDED) return@forEach
                     val message = change.document.data
+                    val createdAt = (message["createdAtMs"] as? Number)?.toLong() ?: 0L
+                    if (createdAt < listenerStartedAt) return@forEach
                     if (message["senderRole"] != "student") return@forEach
                     val payload = runCatching { JSONObject(message["payload"]?.toString().orEmpty()) }.getOrNull()
                         ?: return@forEach
@@ -210,6 +251,22 @@ class ParentCloudGateway(
         )
     }
 
+    private fun refreshPresence() {
+        val database = db ?: return
+        val uid = auth?.currentUser?.uid ?: return
+        val code = currentCode.takeIf { it.matches(Regex("\\d{6}")) } ?: return
+        val now = System.currentTimeMillis()
+        database.collection(CHANNELS).document(code).set(
+            mapOf(
+                "parentUid" to uid,
+                "parentOnline" to true,
+                "lastParentSeenMs" to now,
+                "expiresAtMs" to now + CHANNEL_TTL_MS
+            ),
+            com.google.firebase.firestore.SetOptions.merge()
+        )
+    }
+
     private fun stopListeners() {
         channelListener?.remove()
         messageListener?.remove()
@@ -234,5 +291,7 @@ class ParentCloudGateway(
         private const val APP_NAME = "studylock-parent-native"
         private const val CHANNELS = "studylock_parent_channels"
         private const val STUDENT_ONLINE_WINDOW_MS = 30_000L
+        private const val HEARTBEAT_INTERVAL_MS = 15_000L
+        private const val CHANNEL_TTL_MS = 30 * 60 * 1000L
     }
 }
