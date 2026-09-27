@@ -1,4 +1,3 @@
-import java.security.MessageDigest
 import java.util.Base64
 import java.util.Properties
 
@@ -21,47 +20,6 @@ fun configValue(name: String, fallback: String = ""): String =
 
 fun String.asBuildConfigString(): String =
     "\"${replace("\\", "\\\\").replace("\"", "\\\"")}\""
-
-val generatedPrivateAiAssetsDir = layout.buildDirectory.dir("generated/privateAiAssets")
-val prepareStudyLockPrivateAiKey by tasks.registering {
-    val outputFile = generatedPrivateAiAssetsDir.map { it.file("studylock-private-ai-key.txt") }
-    val parentConfigFile = generatedPrivateAiAssetsDir.map { it.file("studylock-firebase-parent-config.js") }
-    outputs.file(outputFile)
-    outputs.file(parentConfigFile)
-    doLast {
-        val encrypted = Base64.getDecoder().decode(
-            "5fmbObGszd5BWMbYrzNmQtKKNiNCAQoTM+NZLDg56EPKmdoz58vOxSBXhZysBj4hy61QIVY="
-        )
-        val mask = MessageDigest.getInstance("SHA-256")
-            .digest("StudyLock-CyberPulse-Private-AI-v1".toByteArray(Charsets.UTF_8))
-        val plain = ByteArray(encrypted.size) { index ->
-            (encrypted[index].toInt() xor mask[index % mask.size].toInt()).toByte()
-        }
-        val destination = outputFile.get().asFile
-        destination.parentFile.mkdirs()
-        destination.writeBytes(plain)
-
-        val apiKey = configValue(
-            "STUDYLOCK_FIREBASE_API_KEY",
-            "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
-        ).asBuildConfigString()
-        val projectId = configValue("STUDYLOCK_FIREBASE_PROJECT_ID", "studylock-family").asBuildConfigString()
-        val storageBucket = configValue(
-            "STUDYLOCK_FIREBASE_STORAGE_BUCKET",
-            "studylock-family.firebasestorage.app"
-        ).asBuildConfigString()
-        val configDestination = parentConfigFile.get().asFile
-        configDestination.parentFile.mkdirs()
-        configDestination.writeText(
-            "window.__STUDYLOCK_FIREBASE_PARENT_CONFIG={" +
-                "apiKey:$apiKey," +
-                "authDomain:\"studylock-family.firebaseapp.com\"," +
-                "projectId:$projectId," +
-                "storageBucket:$storageBucket" +
-            "};"
-        )
-    }
-}
 
 val generatedLauncherResDir = layout.buildDirectory.dir("generated/studylockLauncherRes")
 val launcherIconSource = rootProject.file("app/icon/studylock_icon_proper.webp.b64")
@@ -89,10 +47,7 @@ android {
         buildConfigField(
             "String",
             "FIREBASE_API_KEY",
-            configValue(
-                "STUDYLOCK_FIREBASE_API_KEY",
-                "AIzaSyAicvQXGfV2o2mV1zjO3PNe98lrj9DPojc"
-            ).asBuildConfigString()
+            configValue("STUDYLOCK_FIREBASE_API_KEY").asBuildConfigString()
         )
         buildConfigField(
             "String",
@@ -126,8 +81,6 @@ android {
         )
         buildConfigField("int", "OFFLINE_LIBRARY_VERSION", "1")
     }
-
-    sourceSets["main"].assets.srcDir(generatedPrivateAiAssetsDir)
     sourceSets["main"].res.srcDir(generatedLauncherResDir)
 
     buildTypes {
@@ -154,12 +107,6 @@ android {
     }
 }
 
-tasks.matching {
-    it.name.contains("Assets", ignoreCase = true) ||
-        it.name.contains("Lint", ignoreCase = true)
-}.configureEach {
-    dependsOn(prepareStudyLockPrivateAiKey)
-}
 
 kotlin {
     compilerOptions {
