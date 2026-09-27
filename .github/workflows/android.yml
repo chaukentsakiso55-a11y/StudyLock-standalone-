@@ -121,12 +121,12 @@ jobs:
           "$AAPT" dump xmltree build-artifacts/studylock-student.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.MainActivity"
           "$AAPT" dump xmltree build-artifacts/studylock-parent.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.parent.ParentMainActivity"
           "$AAPT" dump xmltree build-artifacts/studylock-teacher.apk AndroidManifest.xml | grep "com.cyberpulse.studylock.teacher.TeacherMainActivity"
-          STUDENT_DEX_SHA="$(unzip -p build-artifacts/studylock-student.apk classes.dex | sha256sum | cut -d' ' -f1)"
-          PARENT_DEX_SHA="$(unzip -p build-artifacts/studylock-parent.apk classes.dex | sha256sum | cut -d' ' -f1)"
-          TEACHER_DEX_SHA="$(unzip -p build-artifacts/studylock-teacher.apk classes.dex | sha256sum | cut -d' ' -f1)"
-          test "$STUDENT_DEX_SHA" != "$PARENT_DEX_SHA"
-          test "$STUDENT_DEX_SHA" != "$TEACHER_DEX_SHA"
-          test "$PARENT_DEX_SHA" != "$TEACHER_DEX_SHA"
+          STUDENT_APK_SHA="$(sha256sum build-artifacts/studylock-student.apk | cut -d' ' -f1)"
+          PARENT_APK_SHA="$(sha256sum build-artifacts/studylock-parent.apk | cut -d' ' -f1)"
+          TEACHER_APK_SHA="$(sha256sum build-artifacts/studylock-teacher.apk | cut -d' ' -f1)"
+          test "$STUDENT_APK_SHA" != "$PARENT_APK_SHA"
+          test "$STUDENT_APK_SHA" != "$TEACHER_APK_SHA"
+          test "$PARENT_APK_SHA" != "$TEACHER_APK_SHA"
       - name: Package Android Studio source
         run: |
           zip -r build-artifacts/StudyLock-source-code.zip . \
