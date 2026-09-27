@@ -131,7 +131,7 @@ jobs:
                'functions/node_modules/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: StudyLock-student-parent
+          name: StudyLock-All-3-APKs
           path: |
             build-artifacts/studylock-student.apk
             build-artifacts/studylock-parent.apk
@@ -164,7 +164,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: StudyLock-student-parent
+          name: StudyLock-All-3-APKs
           path: release-artifacts
       - name: Enable KVM
         run: |
